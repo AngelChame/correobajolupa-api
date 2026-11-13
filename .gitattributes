@@ -1,0 +1,8 @@
+# Finales de línea LF en todo el repositorio.
+* text=auto eol=lf
+
+# Los scripts deben usar LF aunque se trabaje en Windows.
+*.sh text eol=lf
+
+# Los .eml no se normalizan: cambiar sus finales de línea altera su contenido y su SHA-256.
+*.eml binary

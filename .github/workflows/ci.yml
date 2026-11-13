@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secretos:
+    name: Escáner de secretos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # Para cuentas personales no hace falta licencia; si el repo pasa a una organización, sí.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  node:
+    name: Node (tipos, pruebas, auditoría)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: ¿Ya hay un proyecto de Node?
+        id: detectar
+        run: |
+          if [ -f package.json ]; then
+            echo "hay=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=false" >> "$GITHUB_OUTPUT"
+            echo "Todavía no hay package.json; se omiten los pasos de Node."
+          fi
+      - uses: actions/setup-node@v6
+        if: steps.detectar.outputs.hay == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependencias
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm ci
+      - name: Estilo
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm run lint --if-present
+      - name: Tipos
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm run typecheck --if-present
+      - name: Compilar
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm run build --if-present
+      - name: Pruebas
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm test --if-present
+      - name: Auditoría de dependencias
+        if: steps.detectar.outputs.hay == 'true'
+        run: npm audit --audit-level=high
+      # PENDIENTE (M0): chequeo de que el OpenAPI generado coincide con el commiteado (D-033)
+      # PENDIENTE (M8): Trivy sobre las imágenes de Docker

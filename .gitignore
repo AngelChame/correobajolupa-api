@@ -1,0 +1,36 @@
+# --- Dependencias y compilación ---
+node_modules/
+dist/
+build/
+coverage/
+*.log
+*.tsbuildinfo
+
+# --- Secretos y variables de entorno (solo se versiona .env.example) ---
+.env
+.env.*
+!.env.example
+
+# --- Llaves y credenciales (por ejemplo las del Learner Lab de AWS) ---
+*.pem
+*.ppk
+*.key
+labsuser*
+.aws/
+
+# --- Correos y datos reales: nunca al repositorio ---
+# Solo pueden versionarse los .eml sintéticos o anonimizados de esta carpeta.
+*.eml
+!test/fixtures/**/*.eml
+
+# --- Datos de ejecución y respaldos ---
+/storage/
+/data/
+backups/
+*.dump
+*.sql.gz
+
+# --- Sistema y editor ---
+.DS_Store
+Thumbs.db
+.idea/
