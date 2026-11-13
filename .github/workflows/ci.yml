@@ -60,5 +60,5 @@ jobs:
       - name: Auditoría de dependencias
         if: steps.detectar.outputs.hay == 'true'
         run: npm audit --audit-level=high
-      # PENDIENTE (M0): chequeo de que el OpenAPI generado coincide con el commiteado (D-033)
+      # El chequeo de que el OpenAPI generado coincide con el commiteado corre dentro de `npm test` (D-033)
       # PENDIENTE (M8): Trivy sobre las imágenes de Docker

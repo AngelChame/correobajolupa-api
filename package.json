@@ -1,0 +1,26 @@
+{
+  "name": "correobajolupa-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API REST de CorreoBajoLupa: análisis explicable de correos sospechosos.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "contract:generate": "tsx src/contract/generate.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7",
+    "zod-openapi": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
