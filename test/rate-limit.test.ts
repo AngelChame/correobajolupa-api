@@ -32,3 +32,23 @@ describe('límite de peticiones por IP', () => {
     expect((await request(b).post('/api/v1/auth/register').send({})).status).toBe(400);
   });
 });
+
+describe('límite global por IP en /api/v1', () => {
+  it('responde 429 rate_limited al pasar el límite, en cualquier ruta de la API', async () => {
+    const { app } = appConRegistros({ RATE_LIMIT_GLOBAL_PER_MINUTE: '3' });
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).get('/api/v1/auth/me')).status).toBe(401);
+    }
+    const res = await request(app).get('/api/v1/no-existe');
+    expect(res.status).toBe(429);
+    expect(ErrorResponse.parse(res.body).code).toBe('rate_limited');
+  });
+
+  it('no cuenta ni bloquea /health', async () => {
+    const { app } = appConRegistros({ RATE_LIMIT_GLOBAL_PER_MINUTE: '2' });
+    for (let i = 0; i < 5; i++) {
+      expect((await request(app).get('/api/v1/health')).status).toBe(200);
+    }
+    expect((await request(app).get('/api/v1/auth/me')).status).toBe(401);
+  });
+});

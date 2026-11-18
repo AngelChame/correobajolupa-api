@@ -9,6 +9,7 @@ import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
 import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
+import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
 import { createUsersRouter } from './users/routes.js';
 
@@ -65,6 +66,9 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   // Van antes de las rutas: una ruta puede sobrescribirlas a propósito (ver src/http/security.ts).
   app.use(securityHeaders(config));
   app.use(noStore);
+
+  // Límite global por IP en /api/v1 (salvo /health), antes de leer el cuerpo.
+  app.use('/api/v1', globalRateLimit(config));
 
   // Límite provisional; los de reportes y archivos se fijan con la nº 5.
   app.use(express.json({ limit: '100kb' }));

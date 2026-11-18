@@ -26,6 +26,7 @@ describe('loadConfig', () => {
       RATE_LIMIT_LOGIN_PER_IP: 30,
       RATE_LIMIT_LOGIN_FAILS_PER_EMAIL: 5,
       RATE_LIMIT_LOGIN_WINDOW_MIN: 15,
+      RATE_LIMIT_GLOBAL_PER_MINUTE: 300,
     });
   });
 

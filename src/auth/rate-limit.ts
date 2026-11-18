@@ -1,8 +1,8 @@
-import type { Request, RequestHandler, Response } from 'express';
+import type { RequestHandler } from 'express';
 import { rateLimit, type Options } from 'express-rate-limit';
 import type { Config } from '../config.js';
 import { normalizeEmail } from '../db/email.js';
-import { sendError } from '../http/errors.js';
+import { rateLimitHandler } from '../http/global-limit.js';
 import { sha256Hex } from './crypto.js';
 
 export type AuthLimiters = {
@@ -28,9 +28,7 @@ export function createAuthLimiters(config: Config): AuthLimiters {
   const comun: Partial<Options> = {
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    handler: (req: Request, res: Response) => {
-      sendError(req, res, 429, 'rate_limited', 'Demasiados intentos. Espera unos minutos e intenta de nuevo.');
-    },
+    handler: rateLimitHandler,
   };
 
   return {

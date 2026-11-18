@@ -37,6 +37,8 @@ const Env = z
     RATE_LIMIT_LOGIN_PER_IP: entero(30),
     RATE_LIMIT_LOGIN_FAILS_PER_EMAIL: entero(5),
     RATE_LIMIT_LOGIN_WINDOW_MIN: entero(15),
+    // Límite global por IP en /api/v1 (salvo /health). Holgado: sin proxy todos comparten IP (D-048).
+    RATE_LIMIT_GLOBAL_PER_MINUTE: entero(300),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
