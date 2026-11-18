@@ -52,6 +52,18 @@ services:
       PORT: "3000"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
+      # Con NODE_ENV=production la API no arranca si COOKIE_SECURE=false.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Primer administrador (opcionales, en pareja) y código de invitación (vacío = registro abierto).
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
+      INVITE_CODE: ${INVITE_CODE:-}
+      # Límites de peticiones; vacíos toman los valores por defecto de src/config.ts.
+      RATE_LIMIT_REGISTER_PER_IP: ${RATE_LIMIT_REGISTER_PER_IP:-}
+      RATE_LIMIT_REGISTER_WINDOW_MIN: ${RATE_LIMIT_REGISTER_WINDOW_MIN:-}
+      RATE_LIMIT_LOGIN_PER_IP: ${RATE_LIMIT_LOGIN_PER_IP:-}
+      RATE_LIMIT_LOGIN_FAILS_PER_EMAIL: ${RATE_LIMIT_LOGIN_FAILS_PER_EMAIL:-}
+      RATE_LIMIT_LOGIN_WINDOW_MIN: ${RATE_LIMIT_LOGIN_WINDOW_MIN:-}
     depends_on:
       db:
         condition: service_healthy

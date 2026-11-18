@@ -12,6 +12,9 @@ src/generated/
 .env
 .env.*
 !.env.example
+# Archivos de cookies de curl (llevan tokens de sesión)
+cookies.txt
+*.cookies
 
 # --- Llaves y credenciales (por ejemplo las del Learner Lab de AWS) ---
 *.pem

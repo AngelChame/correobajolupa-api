@@ -63,4 +63,10 @@ describe('loadConfig', () => {
     expect(config.FIRST_ADMIN_EMAIL).toBeUndefined();
     expect(config.INVITE_CODE).toBeUndefined();
   });
+
+  it('un límite vacío toma su valor por defecto y uno inválido falla', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, RATE_LIMIT_LOGIN_PER_IP: '' }).RATE_LIMIT_LOGIN_PER_IP).toBe(30);
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, RATE_LIMIT_LOGIN_PER_IP: '7' }).RATE_LIMIT_LOGIN_PER_IP).toBe(7);
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, RATE_LIMIT_LOGIN_PER_IP: '0' })).toContain('RATE_LIMIT_LOGIN_PER_IP');
+  });
 });

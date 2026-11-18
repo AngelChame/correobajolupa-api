@@ -7,7 +7,9 @@ const DatabaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 const opcional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((valor) => (valor === '' ? undefined : valor), schema.optional());
 
-const entero = (porDefecto: number) => z.coerce.number().int().min(1).default(porDefecto);
+/** Entero positivo con valor por defecto; vacío en el .env también toma el valor por defecto. */
+const entero = (porDefecto: number) =>
+  z.preprocess((valor) => (valor === '' ? undefined : valor), z.coerce.number().int().min(1).default(porDefecto));
 
 /** Variables de entorno que la API necesita hoy. Se agregan conforme llegan los módulos. */
 const Env = z
