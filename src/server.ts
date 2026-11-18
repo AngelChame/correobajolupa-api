@@ -1,4 +1,5 @@
 import { createApp } from './app.js';
+import { createDecoyHash } from './auth/password.js';
 import { loadConfig } from './config.js';
 import { connectDb, disconnectDb } from './db/client.js';
 import { createLogger } from './logger.js';
@@ -7,7 +8,9 @@ const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL);
 // Un solo cliente de base para todo el proceso; se conecta en la primera consulta.
 const db = connectDb(config.DATABASE_URL);
-const app = createApp({ logger, db, config });
+// El hash señuelo se calcula una sola vez, con los mismos parámetros que los reales.
+const decoyHash = await createDecoyHash();
+const app = createApp({ logger, db, config, decoyHash });
 
 const server = app.listen(config.PORT);
 server.on('listening', () => logger.info({ port: config.PORT, env: config.NODE_ENV }, 'API escuchando'));

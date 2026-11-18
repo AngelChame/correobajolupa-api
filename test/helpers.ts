@@ -1,4 +1,5 @@
 import { createApp } from '../src/app.js';
+import { createDecoyHash } from '../src/auth/password.js';
 import { loadConfig, type Config } from '../src/config.js';
 import type { Db } from '../src/db/client.js';
 import { createLogger } from '../src/logger.js';
@@ -29,10 +30,13 @@ export function fakeDb(): Db {
   });
 }
 
+/** Hash señuelo compartido por las pruebas (se calcula una vez por archivo). */
+export const decoyHash = await createDecoyHash();
+
 /** App con base falsa que guarda en `lineas` todo lo que se registra. */
 export function appConRegistros(overrides: NodeJS.ProcessEnv = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
-  const app = createApp({ logger, db: fakeDb(), config: testConfig(overrides) });
+  const app = createApp({ logger, db: fakeDb(), config: testConfig(overrides), decoyHash });
   return { app, lineas };
 }

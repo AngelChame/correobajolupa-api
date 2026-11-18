@@ -3,6 +3,7 @@ import express, { type ErrorRequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { csrfGuard } from './auth/csrf.js';
+import { createAuthRouter } from './auth/routes.js';
 import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
 import type { Db } from './db/client.js';
@@ -21,9 +22,11 @@ export type AppDeps = {
   logger: Logger;
   db: Db;
   config: Config;
+  /** Hash señuelo de Argon2id, calculado una vez al arrancar (createDecoyHash). */
+  decoyHash: string;
 };
 
-export function createApp({ logger, db, config }: AppDeps) {
+export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   // 'trust proxy' se configura cuando exista el proxy inverso (nº 28).
@@ -63,6 +66,7 @@ export function createApp({ logger, db, config }: AppDeps) {
   v1.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+  v1.use('/auth', createAuthRouter({ db, config, decoyHash }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {
