@@ -10,6 +10,9 @@ const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 /** Ruta sin query string: los parámetros nunca van a los registros (D-036). */
 const sinQuery = (url: string) => url.split('?')[0] ?? url;
 
+/** Ruta del healthcheck; no se registra en cada petición (ver autoLogging). */
+const HEALTH_PATH = '/api/v1/health';
+
 export function createApp({ logger }: { logger: Logger }) {
   const app = express();
   app.disable('x-powered-by');
@@ -23,6 +26,11 @@ export function createApp({ logger }: { logger: Logger }) {
         const id = typeof recibido === 'string' && REQUEST_ID.test(recibido) ? recibido : randomUUID();
         res.setHeader('X-Request-Id', id);
         return id;
+      },
+      // El healthcheck de Docker pide /health cada 10 s: registrarlo solo llena los logs de ruido.
+      // Se compara la ruta sin query string y solo con GET; cualquier otra petición se registra.
+      autoLogging: {
+        ignore: (req) => req.method === 'GET' && sinQuery(req.url ?? '') === HEALTH_PATH,
       },
       // Solo método, ruta e ID: sin cabeceras, cookies ni cuerpo.
       serializers: {

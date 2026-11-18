@@ -55,8 +55,9 @@ describe('errores con la forma del contrato (D-044)', () => {
 describe('registros (D-036)', () => {
   it('no guardan cookies, Authorization, CSRF ni la query string', async () => {
     const { app, lineas } = appConRegistros();
+    // Ruta que sí se registra (/health quedó fuera del registro automático).
     await request(app)
-      .get('/api/v1/health?correo=MARCADOR_QUERY')
+      .get('/api/v1/no-existe?correo=MARCADOR_QUERY')
       .set('Cookie', 'cbl_session=MARCADOR_COOKIE')
       .set('Authorization', 'Bearer MARCADOR_AUTH')
       .set('X-CSRF-Token', 'MARCADOR_CSRF');
@@ -65,5 +66,20 @@ describe('registros (D-036)', () => {
     for (const marcador of ['MARCADOR_QUERY', 'MARCADOR_COOKIE', 'MARCADOR_AUTH', 'MARCADOR_CSRF']) {
       expect(todo).not.toContain(marcador);
     }
+  });
+
+  it('omiten GET /health (healthcheck) pero registran las demás rutas', async () => {
+    const { app, lineas } = appConRegistros();
+    await request(app).get('/api/v1/health');
+    await request(app).get('/api/v1/health?x=1');
+    expect(lineas).toHaveLength(0);
+
+    await request(app).get('/api/v1/no-existe');
+    await request(app).post('/api/v1/health').set('Content-Type', 'application/json').send('{}');
+    const urls = lineas.map((linea) => (JSON.parse(linea) as { req?: { method: string; url: string } }).req);
+    expect(urls).toEqual([
+      expect.objectContaining({ method: 'GET', url: '/api/v1/no-existe' }),
+      expect.objectContaining({ method: 'POST', url: '/api/v1/health' }),
+    ]);
   });
 });
