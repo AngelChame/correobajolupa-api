@@ -1,0 +1,47 @@
+import request from 'supertest';
+import { expect } from 'vitest';
+import { createApp } from '../../src/app.js';
+import { createDecoyHash, hashPassword } from '../../src/auth/password.js';
+import { Session } from '../../src/contract/schemas/auth.js';
+import { createDb } from '../../src/db/client.js';
+import type { Role } from '../../src/generated/prisma/enums.js';
+import { createLogger } from '../../src/logger.js';
+import { testConfig } from '../helpers.js';
+import { testDatabaseUrl } from './test-db.js';
+
+/** Utilidades compartidas por las pruebas de integración de rutas. */
+
+export const db = createDb(testDatabaseUrl());
+export const decoyHash = await createDecoyHash();
+export const CLAVE = 'una-clave-de-prueba-larga';
+const claveHash = await hashPassword(CLAVE);
+
+export async function limpiarBase(): Promise<void> {
+  await db.$executeRawUnsafe('TRUNCATE audit_events, sessions, users');
+}
+
+export function crearApp(overrides: NodeJS.ProcessEnv = {}) {
+  const lineas: string[] = [];
+  const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
+  const config = testConfig({ DATABASE_URL: testDatabaseUrl(), ...overrides });
+  return { app: createApp({ logger, db, config, decoyHash }), lineas, logger, config };
+}
+
+export type Sesion = { userId: string; cookie: string; csrf: string; token: string };
+
+/** Crea una cuenta con el rol dado directamente en la base e inicia sesión por la API. */
+export async function entrarComo(app: Parameters<typeof request>[0], role: Role, email: string): Promise<Sesion> {
+  const user = await db.user.create({ data: { email, displayName: `Persona ${role}`, passwordHash: claveHash, role } });
+  const res = await request(app).post('/api/v1/auth/login').send({ email, password: CLAVE });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  const sesion = Session.parse(res.body);
+  const token = tokenDe(res)!;
+  return { userId: user.id, cookie: `cbl_session=${token}`, csrf: sesion.csrfToken, token };
+}
+
+/** Token de la cookie cbl_session de una respuesta (o undefined). */
+export function tokenDe(res: request.Response): string | undefined {
+  const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
+  const cookie = cookies.find((c) => c.startsWith('cbl_session=') && !c.startsWith('cbl_session=;'));
+  return cookie?.split(';')[0]?.slice('cbl_session='.length);
+}

@@ -5,11 +5,16 @@ build/
 coverage/
 *.log
 *.tsbuildinfo
+# Cliente de Prisma: se genera con `npm run db:generate` (también lo corren typecheck y build)
+src/generated/
 
 # --- Secretos y variables de entorno (solo se versiona .env.example) ---
 .env
 .env.*
 !.env.example
+# Archivos de cookies de curl (llevan tokens de sesión)
+cookies.txt
+*.cookies
 
 # --- Llaves y credenciales (por ejemplo las del Learner Lab de AWS) ---
 *.pem

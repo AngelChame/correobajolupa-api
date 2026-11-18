@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CorreoBajoLupa API",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Contrato v0 de M0 (cuentas) y M1 (reportes y hallazgos). Los demás módulos se agregan al llegar a ellos.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces."
   },
   "servers": [
@@ -331,6 +331,16 @@
               }
             }
           },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No hay sesión activa (`unauthenticated`).",
             "content": {
@@ -436,6 +446,16 @@
           },
           "404": {
             "description": "No existe o no es del usuario (`not_found`). Se usa 404 y no 403 para no revelar reportes ajenos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El cambio dejaría al sistema sin administradores activos, o un administrador intenta quitarse el rol o desactivarse (`conflict`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1238,6 +1258,7 @@
           "forbidden",
           "not_found",
           "email_taken",
+          "conflict",
           "report_not_ready",
           "payload_too_large",
           "unsupported_media_type",

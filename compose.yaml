@@ -1,0 +1,101 @@
+# Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API.
+# Llegan después: Redis y el trabajador (M1), ClamAV (M2), Dovecot (M4), el front (D-031) y el proxy (nº 28).
+# Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
+
+name: correobajolupa
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17.12-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-correobajolupa}
+      POSTGRES_USER: ${POSTGRES_USER:-correobajolupa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Sin puertos publicados: solo la API llega a la base por la red interna.
+    restart: unless-stopped
+    logging: *logging
+
+  # Aplica las migraciones pendientes y termina. La API no arranca hasta que salga con 0.
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      target: runtime
+    # Solo las variables que la API usa hoy; el resto del .env no entra al contenedor.
+    # Se agregan aquí conforme llegan los módulos (Redis en M1, ClamAV en M2...).
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
+      # Con NODE_ENV=production la API no arranca si COOKIE_SECURE=false.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Primer administrador (opcionales, en pareja) y código de invitación (vacío = registro abierto).
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
+      INVITE_CODE: ${INVITE_CODE:-}
+      # Límites de peticiones; vacíos toman los valores por defecto de src/config.ts.
+      RATE_LIMIT_REGISTER_PER_IP: ${RATE_LIMIT_REGISTER_PER_IP:-}
+      RATE_LIMIT_REGISTER_WINDOW_MIN: ${RATE_LIMIT_REGISTER_WINDOW_MIN:-}
+      RATE_LIMIT_LOGIN_PER_IP: ${RATE_LIMIT_LOGIN_PER_IP:-}
+      RATE_LIMIT_LOGIN_FAILS_PER_EMAIL: ${RATE_LIMIT_LOGIN_FAILS_PER_EMAIL:-}
+      RATE_LIMIT_LOGIN_WINDOW_MIN: ${RATE_LIMIT_LOGIN_WINDOW_MIN:-}
+      # Límite global por IP en /api/v1 (salvo /health). Sin proxy todos comparten IP (D-048).
+      RATE_LIMIT_GLOBAL_PER_MINUTE: ${RATE_LIMIT_GLOBAL_PER_MINUTE:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Solo en la propia máquina; en la instancia, el proxy (nº 28) publicará 80 y 443.
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    # Arranca sola cuando la instancia del Learner Lab se reinicia (D-009).
+    restart: unless-stopped
+    logging: *logging
+
+  # Base efímera para `npm run test:int` (solo con --profile test; no arranca con la pila).
+  # Datos en memoria: se pierden al detenerla. Usuario y contraseña de prueba, solo en esta máquina.
+  db-test:
+    profiles: [test]
+    image: postgres:17.12-alpine3.24
+    environment:
+      POSTGRES_DB: correobajolupa_test
+      POSTGRES_USER: cbl_test
+      POSTGRES_PASSWORD: cbl_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${TEST_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbl_test -d correobajolupa_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  db-data:

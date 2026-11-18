@@ -1,0 +1,12 @@
+node_modules
+dist
+src/generated
+coverage
+.git
+.github
+.env
+.env.*
+test
+contract
+*.md
+*.log

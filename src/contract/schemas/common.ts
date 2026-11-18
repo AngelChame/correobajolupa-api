@@ -12,6 +12,7 @@ export const ErrorCode = z
     'forbidden',
     'not_found',
     'email_taken',
+    'conflict',
     'report_not_ready',
     'payload_too_large',
     'unsupported_media_type',
