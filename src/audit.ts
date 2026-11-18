@@ -28,7 +28,8 @@ export type AuditEntry = {
   metadata?: Prisma.InputJsonObject;
 };
 
-export async function recordAudit(db: Db, entry: AuditEntry): Promise<void> {
+/** Acepta el cliente normal o el de una transacción (así el evento se guarda en la misma transacción). */
+export async function recordAudit(db: Pick<Db, 'auditEvent'>, entry: AuditEntry): Promise<void> {
   await db.auditEvent.create({
     data: {
       action: entry.action,
