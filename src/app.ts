@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import express, { type ErrorRequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
+import { csrfGuard } from './auth/csrf.js';
 import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
 import type { Db } from './db/client.js';
@@ -55,6 +56,8 @@ export function createApp({ logger, db, config }: AppDeps) {
 
   // Sesión de la cookie cbl_session (D-034): si es válida queda en req.auth.
   app.use(loadSession(db, config.COOKIE_SECURE));
+  // CSRF para toda petición que modifica datos, salvo registro y entrada (D-044).
+  app.use(csrfGuard);
 
   const v1 = express.Router();
   v1.get('/health', (_req, res) => {
