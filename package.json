@@ -13,6 +13,7 @@
     "dev": "tsx watch src/server.ts",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
+    "test:int": "vitest run --config vitest.integration.config.ts",
     "contract:generate": "tsx src/contract/generate.ts",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"
