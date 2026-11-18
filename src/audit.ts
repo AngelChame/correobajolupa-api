@@ -10,6 +10,10 @@ export const AuditAction = {
   register: 'auth.register',
   login: 'auth.login',
   logout: 'auth.logout',
+  authzDenied: 'authz.denied',
+  roleChange: 'user.role_change',
+  deactivate: 'user.deactivate',
+  activate: 'user.activate',
   bootstrapAdmin: 'system.bootstrap_admin',
 } as const;
 
