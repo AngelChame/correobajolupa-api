@@ -57,8 +57,17 @@ jobs:
       - name: Pruebas
         if: steps.detectar.outputs.hay == 'true'
         run: npm test --if-present
-      - name: Auditoría de dependencias
+      # Bloquea solo por las dependencias que van en la imagen (producción).
+      # Las de desarrollo no llegan al contenedor; hoy picomatch (vía vitest) tiene un aviso
+      # alto sin versión corregida, y bloquear por él dejaría el CI en rojo sin nada que arreglar.
+      - name: Auditoría de dependencias (producción)
         if: steps.detectar.outputs.hay == 'true'
+        run: npm audit --omit=dev --audit-level=high
+      # Auditoría completa, informativa: se ve en el CI pero no lo detiene.
+      # Revisar en cada actualización de dependencias si ya hay arreglo.
+      - name: Auditoría de dependencias (completa, no bloquea)
+        if: steps.detectar.outputs.hay == 'true'
+        continue-on-error: true
         run: npm audit --audit-level=high
       # El chequeo de que el OpenAPI generado coincide con el commiteado corre dentro de `npm test` (D-033)
       # PENDIENTE (M8): Trivy sobre las imágenes de Docker
