@@ -9,6 +9,7 @@ import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
 import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
+import { noStore, securityHeaders } from './http/security.js';
 import { createUsersRouter } from './users/routes.js';
 
 /** Se acepta el X-Request-Id que llega solo si es corto y sin caracteres raros; si no, se genera uno. */
@@ -59,6 +60,11 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
       customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
     }),
   );
+
+  // Cabeceras de seguridad y no-store en todas las respuestas, también en errores y 404.
+  // Van antes de las rutas: una ruta puede sobrescribirlas a propósito (ver src/http/security.ts).
+  app.use(securityHeaders(config));
+  app.use(noStore);
 
   // Límite provisional; los de reportes y archivos se fijan con la nº 5.
   app.use(express.json({ limit: '100kb' }));
