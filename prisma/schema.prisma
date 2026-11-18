@@ -1,0 +1,94 @@
+// Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría).
+// Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
+// La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  reporter
+  analyst
+  admin
+
+  @@map("user_role")
+}
+
+enum AuditResult {
+  success
+  failure
+  denied
+
+  @@map("audit_result")
+}
+
+/// Cuenta de la plataforma. El email se guarda siempre en minúsculas
+/// (normalizeEmail en src/db/email.ts y un CHECK en la migración), así
+/// el índice único impide duplicados que solo cambian en mayúsculas.
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(254)
+  /// Hash Argon2id (M0, paso 3). Nunca la contraseña.
+  passwordHash String   @map("password_hash")
+  role         Role     @default(reporter)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions    Session[]
+  auditEvents AuditEvent[]
+
+  @@map("users")
+}
+
+/// Sesión (D-034). La cookie lleva un token aleatorio; aquí solo se guarda su hash,
+/// así que leer esta tabla no da sesiones utilizables.
+model Session {
+  id             String   @id @default(uuid()) @db.Uuid
+  /// Hash del token de la cookie. Nunca el token.
+  tokenHash      String   @unique @map("token_hash") @db.VarChar(128)
+  userId         String   @map("user_id") @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Token CSRF de la sesión (se devuelve en GET /auth/me; solo sirve junto con la cookie).
+  csrfToken      String   @map("csrf_token") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Para el vencimiento por inactividad.
+  lastActivityAt DateTime @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+  /// Vencimiento absoluto; la limpieza de sesiones vencidas filtra por aquí.
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// Evento de auditoría (D-036). Se enlaza con los registros técnicos por requestId.
+/// NUNCA se guardan aquí cuerpos ni asuntos de correos, contraseñas, tokens, cookies
+/// ni otros secretos: ni en columnas ni dentro de metadata.
+model AuditEvent {
+  id         String      @id @default(uuid()) @db.Uuid
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  requestId  String      @map("request_id") @db.VarChar(64)
+  /// Quién hizo la acción. Si la cuenta se borra, el evento se conserva con actor nulo.
+  actorId    String?     @map("actor_id") @db.Uuid
+  actor      User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// Acción corta y estable, por ejemplo "auth.login" o "user.role_change".
+  action     String      @db.VarChar(64)
+  targetType String?     @map("target_type") @db.VarChar(32)
+  targetId   String?     @map("target_id") @db.VarChar(64)
+  result     AuditResult
+  /// Datos extra no sensibles (IDs, rol anterior y nuevo, motivo de un rechazo).
+  metadata   Json?
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@map("audit_events")
+}

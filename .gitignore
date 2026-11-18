@@ -5,6 +5,8 @@ build/
 coverage/
 *.log
 *.tsbuildinfo
+# Cliente de Prisma: se genera con `npm run db:generate` (también lo corren typecheck y build)
+src/generated/
 
 # --- Secretos y variables de entorno (solo se versiona .env.example) ---
 .env
