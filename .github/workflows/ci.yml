@@ -100,6 +100,9 @@ jobs:
           cache: npm
       - name: Instalar dependencias
         run: npm ci
+      # src/generated/ no se versiona: sin este paso las pruebas no encuentran el cliente.
+      - name: Generar el cliente de Prisma
+        run: npm run db:generate
       - name: Validar el esquema de Prisma
         run: npm run db:validate
       - name: Aplicar las migraciones
