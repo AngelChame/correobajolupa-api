@@ -1,0 +1,48 @@
+# Pila de CorreoBajoLupa (RNF-23). Paso 1 de M0: PostgreSQL y la API.
+# Llegan después: Redis y el trabajador (M1), ClamAV (M2), Dovecot (M4), el front (D-031) y el proxy (nº 28).
+# Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
+
+name: correobajolupa
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-correobajolupa}
+      POSTGRES_USER: ${POSTGRES_USER:-correobajolupa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Sin puertos publicados: solo la API llega a la base por la red interna.
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Solo en la propia máquina; en la instancia, el proxy (nº 28) publicará 80 y 443.
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    # Arranca sola cuando la instancia del Learner Lab se reinicia (D-009).
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  db-data:
