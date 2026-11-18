@@ -36,6 +36,8 @@ enum AuditResult {
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique @db.VarChar(254)
+  /// Nombre para mostrar (contrato: 1 a 80 caracteres). Se escapa siempre al mostrarlo.
+  displayName  String   @map("display_name") @db.VarChar(80)
   /// Hash Argon2id (M0, paso 3). Nunca la contraseña.
   passwordHash String   @map("password_hash")
   role         Role     @default(reporter)
@@ -71,16 +73,18 @@ model Session {
 }
 
 /// Evento de auditoría (D-036). Se enlaza con los registros técnicos por requestId.
+/// Los eventos sin petición HTTP (arranque, tareas programadas) no llevan requestId
+/// y usan acciones con prefijo "system." (D-047).
 /// NUNCA se guardan aquí cuerpos ni asuntos de correos, contraseñas, tokens, cookies
 /// ni otros secretos: ni en columnas ni dentro de metadata.
 model AuditEvent {
   id         String      @id @default(uuid()) @db.Uuid
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  requestId  String      @map("request_id") @db.VarChar(64)
+  requestId  String?     @map("request_id") @db.VarChar(64)
   /// Quién hizo la acción. Si la cuenta se borra, el evento se conserva con actor nulo.
   actorId    String?     @map("actor_id") @db.Uuid
   actor      User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  /// Acción corta y estable, por ejemplo "auth.login" o "user.role_change".
+  /// Acción corta y estable, por ejemplo "auth.login", "user.role_change" o "system.bootstrap_admin".
   action     String      @db.VarChar(64)
   targetType String?     @map("target_type") @db.VarChar(32)
   targetId   String?     @map("target_id") @db.VarChar(64)

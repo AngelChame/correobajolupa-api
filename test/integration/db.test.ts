@@ -15,7 +15,7 @@ beforeEach(async () => {
 });
 
 function crearUsuario(email = 'ana@ejemplo.invalid') {
-  return db.user.create({ data: { email: normalizeEmail(email), passwordHash: 'hash-sintetico' } });
+  return db.user.create({ data: { email: normalizeEmail(email), displayName: 'Persona de prueba', passwordHash: 'hash-sintetico' } });
 }
 
 function crearSesion(userId: string, tokenHash: string) {
@@ -56,8 +56,8 @@ describe('users.email', () => {
 
   it('la base rechaza un email con mayúsculas aunque se salten la normalización', async () => {
     await expect(
-      db.$executeRaw`INSERT INTO users (id, email, password_hash, updated_at)
-                     VALUES (gen_random_uuid(), 'Ana@Ejemplo.invalid', 'x', now())`,
+      db.$executeRaw`INSERT INTO users (id, email, display_name, password_hash, updated_at)
+                     VALUES (gen_random_uuid(), 'Ana@Ejemplo.invalid', 'Ana', 'x', now())`,
     ).rejects.toThrow(/users_email_lowercase_check/);
   });
 });
@@ -77,6 +77,14 @@ describe('borrado de un usuario', () => {
     const conservado = await db.auditEvent.findUniqueOrThrow({ where: { id: evento.id } });
     expect(conservado.actorId).toBeNull();
     expect(conservado.action).toBe('auth.login');
+  });
+});
+
+describe('audit_events.requestId (D-047)', () => {
+  it('es opcional para los eventos del sistema', async () => {
+    const evento = await db.auditEvent.create({ data: { action: 'system.bootstrap_admin', result: 'success' } });
+    expect(evento.requestId).toBeNull();
+    expect(evento.actorId).toBeNull();
   });
 });
 
