@@ -1,7 +1,7 @@
 # API de CorreoBajoLupa. Node 24 (D-032).
-# PENDIENTE antes de la entrega: fijar la versión exacta de la imagen (por ejemplo node:24.x.y-slim).
+# Versión exacta fijada (D-032); al actualizarla, cambia los dos FROM a la vez.
 
-FROM node:24-slim AS deps
+FROM node:24.22.3-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -11,7 +11,7 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:24-slim AS runtime
+FROM node:24.22.3-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./

@@ -12,7 +12,7 @@ x-logging: &logging
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17.12-alpine3.24
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-correobajolupa}
       POSTGRES_USER: ${POSTGRES_USER:-correobajolupa}
