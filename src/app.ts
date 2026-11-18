@@ -9,6 +9,7 @@ import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
 import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
+import { createUsersRouter } from './users/routes.js';
 
 /** Se acepta el X-Request-Id que llega solo si es corto y sin caracteres raros; si no, se genera uno. */
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
@@ -72,6 +73,7 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
     res.json({ status: 'ok' });
   });
   v1.use('/auth', createAuthRouter({ db, config, decoyHash, limiters: createAuthLimiters(config) }));
+  v1.use('/users', createUsersRouter({ db }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {
