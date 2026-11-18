@@ -4,7 +4,9 @@
 # Etapas de construcción: dependencias completas (incluye la CLI de Prisma).
 # openssl lo necesita el motor de migraciones de Prisma; la imagen final no lo lleva.
 FROM node:24.22.3-bookworm-slim AS deps
-RUN apt-get update   && apt-get install -y --no-install-recommends openssl   && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
