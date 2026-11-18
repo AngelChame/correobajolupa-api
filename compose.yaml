@@ -30,9 +30,12 @@ services:
 
   api:
     build: .
-    env_file: .env
+    # Solo las variables que la API usa hoy; el resto del .env no entra al contenedor.
+    # Se agregan aquí conforme llegan los módulos (Redis en M1, ClamAV en M2...).
     environment:
+      NODE_ENV: production
       PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
     depends_on:
       db:

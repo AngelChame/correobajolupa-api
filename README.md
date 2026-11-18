@@ -22,6 +22,8 @@ docker compose up -d --build  # PostgreSQL y la API
 curl http://127.0.0.1:3000/api/v1/health   # {"status":"ok"}
 ```
 
+El Compose solo pasa a la API las variables que usa (lista en `compose.yaml`); lo demás del `.env` se queda fuera del contenedor.
+
 Sin Docker, para desarrollar: `npm ci`, `npm run dev`, `npm test`.
 
 ## Repositorio relacionado
