@@ -1,0 +1,27 @@
+# Configuración de gitleaks (escáner de secretos del CI, D-037).
+#
+# Se conservan TODAS las reglas por defecto. La única excepción es un falso positivo conocido:
+# las pruebas de integración usan contraseñas y tokens sintéticos como "marcadores" para
+# comprobar que nunca llegan a los registros (D-036), y la regla generic-api-key los confunde
+# con claves reales.
+#
+# La excepción está acotada a la vez (condition = AND) por:
+#   - regla: solo generic-api-key;
+#   - ruta: solo archivos dentro de test/integration/;
+#   - valor: solo secretos que empiezan con el prefijo MARCADOR_.
+#
+# Regla para quien escriba pruebas: todo valor sintético que parezca un secreto debe llevar el
+# prefijo MARCADOR_ (por ejemplo MARCADOR_CLAVE_ANA_123). Cualquier otra cosa sigue detectándose.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Marcadores sintéticos de las pruebas de integración (prefijo MARCADOR_)"
+  condition = "AND"
+  paths = ['''^test/integration/''']
+  regexTarget = "secret"
+  regexes = ['''^MARCADOR_[A-Za-z0-9_]+$''']
