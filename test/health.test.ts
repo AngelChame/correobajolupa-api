@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { createApp } from '../src/app.js';
-import { createLogger } from '../src/logger.js';
 import { ErrorResponse } from '../src/contract/schemas/common.js';
-
-function appConRegistros() {
-  const lineas: string[] = [];
-  const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
-  return { app: createApp({ logger }), lineas };
-}
+import { appConRegistros } from './helpers.js';
 
 describe('GET /api/v1/health', () => {
   it('responde 200 con {status: "ok"} y un X-Request-Id', async () => {

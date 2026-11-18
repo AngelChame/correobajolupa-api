@@ -6,8 +6,8 @@ import { createLogger } from './logger.js';
 const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL);
 // Un solo cliente de base para todo el proceso; se conecta en la primera consulta.
-connectDb(config.DATABASE_URL);
-const app = createApp({ logger });
+const db = connectDb(config.DATABASE_URL);
+const app = createApp({ logger, db, config });
 
 const server = app.listen(config.PORT);
 server.on('listening', () => logger.info({ port: config.PORT, env: config.NODE_ENV }, 'API escuchando'));
