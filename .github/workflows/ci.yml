@@ -71,3 +71,41 @@ jobs:
         run: npm audit --audit-level=high
       # El chequeo de que el OpenAPI generado coincide con el commiteado corre dentro de `npm test` (D-033)
       # PENDIENTE (M8): Trivy sobre las imágenes de Docker
+
+  integracion:
+    name: Integración (PostgreSQL y migraciones)
+    runs-on: ubuntu-latest
+    # Base desechable solo para este trabajo; usuario y contraseña de prueba, sin valor fuera del CI.
+    services:
+      postgres:
+        image: postgres:17.12-alpine3.24
+        env:
+          POSTGRES_DB: correobajolupa_test
+          POSTGRES_USER: cbl_test
+          POSTGRES_PASSWORD: cbl_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cbl_test -d correobajolupa_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://cbl_test:cbl_test@localhost:5432/correobajolupa_test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Validar el esquema de Prisma
+        run: npm run db:validate
+      - name: Aplicar las migraciones
+        run: npx prisma migrate deploy
+      - name: Comprobar que el esquema y las migraciones coinciden
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      # test:int vuelve a vaciar la base y aplica las migraciones desde cero antes de las pruebas.
+      - name: Pruebas de integración
+        run: npm run test:int
