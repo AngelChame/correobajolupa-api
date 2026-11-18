@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo (M0: cimientos). Ya hay contrato OpenAPI v0, el modelo de datos inicial con Prisma y las cuentas: registro, entrada, salida y sesión actual (`/api/v1/auth/*`). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo (M0: cimientos). Ya hay contrato OpenAPI v0, el modelo de datos inicial con Prisma, las cuentas (`/api/v1/auth/*`), la administración de usuarios (`/api/v1/users`), cabeceras de seguridad y límites de peticiones. Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -44,12 +44,29 @@ Para desarrollar sin construir la imagen: `npm ci` y `npm test` (pruebas unitari
 - **Primer administrador:** con `FIRST_ADMIN_EMAIL` y `FIRST_ADMIN_PASSWORD` en el `.env`, la API lo crea al arrancar si no hay ningún admin (queda en la auditoría como `system.bootstrap_admin`).
 - **Invitación:** con `INVITE_CODE` definido, el registro exige ese código.
 
+## Usuarios y roles (`/api/v1/users`, solo administrador)
+
+| Ruta | Qué hace |
+| --- | --- |
+| `GET /users?page=&pageSize=&role=` | Lista paginada (orden estable por fecha de alta e id). 400 si los parámetros son inválidos |
+| `PATCH /users/{userId}` | Cambia `role` y/o `active` (requiere `X-CSRF-Token`). 404 si no existe; 409 `conflict` si un admin intenta quitarse el rol o desactivarse, o si no quedaría ningún admin activo |
+
+- Roles: `reporter` (por defecto al registrarse), `analyst` y `admin`. Las rutas se protegen con `requireRole(db, ...roles)`: sin sesión 401; rol insuficiente 403, que queda en la auditoría como `authz.denied`.
+- Cambiar el rol o desactivar una cuenta cierra todas sus sesiones en la misma transacción (D-034); reactivarla no. Quedan en la auditoría `user.role_change` (rol anterior y nuevo), `user.deactivate` y `user.activate`.
+
+## Cabeceras y límites de toda la API
+
+- Cabeceras (helmet): `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, `X-Frame-Options: DENY` y `Cache-Control: no-store`. HSTS (6 meses) solo en producción con `COOKIE_SECURE=true`.
+- Una ruta puede sobrescribir esas cabeceras a propósito (la última escritura gana): así pondrá su propia CSP el visor del HTML del correo en M1 (D-035).
+- Sin CORS: el front y la API comparten origen (D-031).
+- Límite global: `RATE_LIMIT_GLOBAL_PER_MINUTE` peticiones por minuto por IP en `/api/v1` (300 por defecto), salvo `/health`.
+
 Compromisos conocidos de esta etapa (M0):
 
 - El 409 `email_taken` revela que un correo ya tiene cuenta (lo pide el contrato); el límite por IP lo frena.
 - Con 5 fallos por correo, alguien puede bloquear 15 min la entrada de una cuenta concreta.
 - Los contadores de los límites viven en memoria: se reinician al reiniciar la API (pasan a Redis en M1 si hace falta).
-- **`trust proxy` está apagado** hasta que exista el proxy inverso (decisión nº 28). Sin proxy, dentro del Compose la API ve la IP del puente de Docker, así que el límite por IP lo comparten todas las personas. Al poner el proxy hay que activar `trust proxy` con el número exacto de saltos.
+- **`trust proxy` está apagado** hasta que exista el proxy inverso (decisión nº 28). Sin proxy, dentro del Compose la API ve la IP del puente de Docker, así que los límites por IP (también el global) los comparten todas las personas. Al poner el proxy hay que activar `trust proxy` con el número exacto de saltos y revisar los límites.
 
 Prueba rápida con `curl` (la pila levantada):
 
