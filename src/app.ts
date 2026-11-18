@@ -3,6 +3,7 @@ import express, { type ErrorRequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { csrfGuard } from './auth/csrf.js';
+import { createAuthLimiters } from './auth/rate-limit.js';
 import { createAuthRouter } from './auth/routes.js';
 import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
@@ -29,7 +30,11 @@ export type AppDeps = {
 export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
-  // 'trust proxy' se configura cuando exista el proxy inverso (nº 28).
+  // 'trust proxy' queda APAGADO a propósito hasta que exista el proxy inverso (nº 28).
+  // Con él apagado, req.ip es la dirección de quien abre la conexión TCP; en el Compose es la
+  // del puente de Docker, así que el límite por IP lo comparten todas las personas. Al poner
+  // el proxy: app.set('trust proxy', 1) (un salto) y revisar los límites. Nunca 'true' a
+  // ciegas: permitiría falsificar la IP con X-Forwarded-For.
 
   app.use(
     pinoHttp({
@@ -66,7 +71,7 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   v1.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
-  v1.use('/auth', createAuthRouter({ db, config, decoyHash }));
+  v1.use('/auth', createAuthRouter({ db, config, decoyHash, limiters: createAuthLimiters(config) }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

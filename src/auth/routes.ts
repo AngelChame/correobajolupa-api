@@ -1,13 +1,15 @@
 import express, { type Request, type Response } from 'express';
+import type { z } from 'zod';
 import { AuditAction, recordAudit } from '../audit.js';
 import type { Config } from '../config.js';
 import { LoginBody, RegisterBody } from '../contract/schemas/auth.js';
 import type { Db } from '../db/client.js';
 import { normalizeEmail } from '../db/email.js';
 import { sendError } from '../http/errors.js';
-import { parseBody } from '../http/validate.js';
+import { parseBody, validateBody } from '../http/validate.js';
 import { safeEqual } from './crypto.js';
 import { hashPassword, verifyPassword } from './password.js';
+import type { AuthLimiters } from './rate-limit.js';
 import {
   clearSessionCookie,
   createSession,
@@ -23,6 +25,7 @@ export type AuthDeps = {
   config: Config;
   /** Hash señuelo calculado al arrancar (ver createDecoyHash). */
   decoyHash: string;
+  limiters: AuthLimiters;
 };
 
 /** Forma `User` del contrato. Nunca incluye el hash de la contraseña. */
@@ -42,7 +45,7 @@ const requestId = (req: Request) => String(req.id);
 /** Mismo mensaje exista o no la cuenta, esté o no desactivada: no revela qué correos existen. */
 const CREDENCIALES_INVALIDAS = 'Correo o contraseña incorrectos.';
 
-export function createAuthRouter({ db, config, decoyHash }: AuthDeps) {
+export function createAuthRouter({ db, config, decoyHash, limiters }: AuthDeps) {
   const router = express.Router();
   const secure = config.COOKIE_SECURE;
 
@@ -52,7 +55,8 @@ export function createAuthRouter({ db, config, decoyHash }: AuthDeps) {
     res.status(status).json({ user: toUserDto(user), csrfToken });
   }
 
-  router.post('/register', async (req, res) => {
+  // El límite por IP va primero: cuenta también los intentos con datos inválidos.
+  router.post('/register', limiters.registerByIp, async (req, res) => {
     const body = parseBody(RegisterBody, req, res);
     if (!body) return;
 
@@ -96,9 +100,9 @@ export function createAuthRouter({ db, config, decoyHash }: AuthDeps) {
     await iniciarSesion(res, user, 201);
   });
 
-  router.post('/login', async (req, res) => {
-    const body = parseBody(LoginBody, req, res);
-    if (!body) return;
+  // Orden: límite por IP → validación → límite de fallos por correo → verificación.
+  router.post('/login', limiters.loginByIp, validateBody(LoginBody), limiters.loginFailsByEmail, async (req, res) => {
+    const body = res.locals.body as z.infer<typeof LoginBody>;
 
     // Si ya traía una sesión, se borra: cada login empieza con una sesión nueva.
     const previo = readSessionToken(req);

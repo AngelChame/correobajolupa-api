@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import { sendError } from './errors.js';
 
@@ -20,4 +20,14 @@ export function parseBody<T extends z.ZodType>(schema: T, req: Request, res: Res
   }));
   sendError(req, res, 400, 'validation_error', 'Revisa los datos enviados.', details);
   return undefined;
+}
+
+/** Middleware: valida el cuerpo y lo deja en res.locals.body para los siguientes pasos. */
+export function validateBody<T extends z.ZodType>(schema: T): RequestHandler {
+  return (req, res, next) => {
+    const body = parseBody(schema, req, res);
+    if (body === undefined) return;
+    res.locals.body = body;
+    next();
+  };
 }
