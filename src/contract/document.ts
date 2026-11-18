@@ -13,7 +13,7 @@ import {
 } from './schemas/reports.js';
 
 /** Sube con cada cambio del contrato; los cambios que rompen algo se avisan a Cesar. */
-export const CONTRACT_VERSION = '0.1.0';
+export const CONTRACT_VERSION = '0.2.0';
 
 const json = <T extends z.ZodType>(schema: T) => ({ 'application/json': { schema } });
 const error = (description: string) => ({ description, content: json(ErrorResponse) });
@@ -125,7 +125,12 @@ export function buildDocument() {
           tags: ['Usuarios'],
           summary: 'Listar usuarios (solo administrador)',
           requestParams: { query: PageQuery.extend({ role: Role.optional() }) },
-          responses: { 200: { description: 'Página de usuarios.', content: json(UserList) }, 401: e401, 403: e403 },
+          responses: {
+            200: { description: 'Página de usuarios.', content: json(UserList) },
+            400: error('Parámetros de paginación o filtro inválidos (`validation_error`).'),
+            401: e401,
+            403: e403,
+          },
         },
       },
       '/users/{userId}': {
@@ -141,6 +146,9 @@ export function buildDocument() {
             401: e401,
             403: e403,
             404: e404,
+            409: error(
+              'El cambio dejaría al sistema sin administradores activos, o un administrador intenta quitarse el rol o desactivarse (`conflict`).',
+            ),
           },
         },
       },
