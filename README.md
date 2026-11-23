@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada) y M2 (adjuntos: SHA-256, ClamAV y regla R7) hechos; contrato OpenAPI 0.3.0 (declara también M3 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) y M3 (informe con guía de mitigación) hechos; contrato OpenAPI 0.3.0 (declara también M4 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -89,6 +89,7 @@ curl -s -b cookies.txt -X POST -H "X-CSRF-Token: <csrfToken>" http://127.0.0.1:3
 | `GET /reports/{id}/html` | HTML saneado al pedirlo, para un `<iframe sandbox>` (D-035). 409 mientras se analiza; 404 si no trae HTML |
 | `GET /reports/{id}/text` | Texto plano con todas las URL desactivadas |
 | `GET /reports/{id}/attachments` | Adjuntos con SHA-256 y resultado de ClamAV (M2). 409 mientras se analiza |
+| `GET /reports/{id}/report` | Informe con guía de mitigación (M3). 409 mientras se analiza |
 | `DELETE /reports/{id}` | Borra el reporte, sus adjuntos y su carpeta |
 
 - Un reporte ajeno o un id que no es UUID responde 404, no 403. Cuota por cuenta: `REPORTS_PER_USER_PER_HOUR`.
@@ -125,6 +126,25 @@ docker stop cbl-clamav-smoke
 ```
 
 El archivo de prueba EICAR se arma en memoria al correr la prueba (`test/eicar.ts`); la cadena completa no está en el repositorio.
+
+## Informe y guía de mitigación (M3)
+
+`GET /reports/{id}/report` devuelve un `ReportDocument` armado **solo con texto de plantilla** (D-011): nada se genera al pedirlo, no hay ningún modelo de lenguaje y la misma entrada da el mismo informe. Los textos están en `src/report/guide-texts.ts` con su versión (`guideVersion`, hoy `g1-2026.11`); si cambia un texto, sube la versión. El armado es una función pura (`src/report/build.ts`) y la respuesta se valida contra el contrato antes de salir.
+
+- **Acceso:** el reportante ve el informe de sus reportes (D-014); analista y administrador, el de cualquiera. Ajeno o id mal formado → 404. `queued` o `processing` → 409 `report_not_ready`. `failed` → 200 con la nota `failed` y sin hallazgos, indicadores ni adjuntos (D-004).
+- **Contenido:** resumen (`summary`), un hallazgo por fila de `findings` con su guía (qué significa, por qué es riesgoso, qué hacer, qué revisa el analista) y la evidencia ya desactivada, indicadores, adjuntos y notas. **No copia nada del correo:** ni asunto, ni cuerpo, ni encabezados, ni el texto visible de los enlaces.
+- **Orden de los hallazgos:** `R8, R6, R7, R2, R3, R4, R5, R1` (lo más grave o accionable primero) y, dentro de una regla, por fecha e id. Una regla sin guía usa un texto genérico y no tumba el informe.
+- **Indicadores** (máximo 25, sin repetidos): el remitente (`usuario[@]dominio[.]com`), cada dominio o IP distinto de los enlaces (`dominio[.]com`) y el SHA-256 de cada adjunto. Que algo aparezca ahí **no** quiere decir que sea malicioso: son los elementos del correo que sirven para buscar.
+- **Registros:** la ruta solo registra id, estado y conteos; nunca textos del informe, nombres de archivo ni indicadores (P-18).
+
+**Para el front (Cesar):**
+
+- `fileName`, la evidencia y los indicadores son texto hostil: escápalos siempre y nunca los pongas en un `href`, en `innerHTML` ni en una plantilla. Ya vienen desactivados (`hxxp://`, `[.]`, `[@]`); no los "reactives".
+- No pongas ningún botón que abra un enlace, visite un dominio o ejecute o descargue un adjunto. El informe es para leer.
+- Muestra los hallazgos en el orden en que llegan. R8 (coincide con un indicador confirmado) solo aparecerá desde M5.
+- **Notas** (`notes`), en este orden: `failed` (el análisis no terminó), `limited` (análisis limitado, con el motivo), `no_findings` (sin hallazgos no significa seguro) y `auth_informative` (SPF, DKIM y DMARC solo como información; nunca cambian la prioridad). Muéstralas todas.
+- Un reporte `limited` o `failed`, o un adjunto en `error` o `unsupported`, **nunca** se muestra como "seguro" ni como "limpio". Un adjunto `detected` ya cambia el encabezado del resumen.
+- El texto de la sección de indicadores (por ejemplo "estos elementos sirven para buscar; no son prueba de nada") lo pone el front.
 
 ### Limpieza programada
 

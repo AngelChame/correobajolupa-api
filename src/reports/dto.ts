@@ -111,3 +111,20 @@ export function toAttachmentListDto(rows: readonly AttachmentRow[]): z.infer<typ
     })),
   });
 }
+
+/**
+ * Columnas que lee el informe (M3). Ni asunto, ni cuerpo, ni texto visible de los enlaces: el
+ * informe no copia nada del correo. fromAddress y domain salen solo desactivados (D-017).
+ */
+export const REPORT_DOCUMENT_SELECT = {
+  id: true,
+  status: true,
+  limitedReason: true,
+  priority: true,
+  rulesVersion: true,
+  fromAddress: true,
+  authentication: true,
+  findings: { select: { id: true, ruleId: true, evidence: true, createdAt: true } },
+  links: { select: { position: true, domain: true } },
+  attachments: { select: { position: true, fileName: true, sha256: true, scanStatus: true } },
+} as const;
