@@ -90,6 +90,10 @@ describe('etiquetas xn-- (RFC 3492, sin depender de la versión de Node)', () =>
     ['domain', 'xn--mnchen-3ya.example', 'xn--mnchen-3ya.example'],
     ['sender', 'RH@xn--nmina-avisos-4fk.example', 'rh@xn--nmina-avisos-4fk.example'],
     ['url', 'https://xn--nmina-avisos-4fk.example/recibo', 'https://xn--nmina-avisos-4fk.example/recibo'],
+    // El homógrafo escrito en Unicode: la etiqueta xn-- la genera la conversión, en minúsculas.
+    ['url', `https://${CIRILICA}/recibo`, 'https://xn--nmina-avisos-4fk.example/recibo'],
+    // Mayúsculas en una etiqueta normal del host, o "XN--" en la ruta (que distingue mayúsculas): válido.
+    ['url', 'HTTPS://Portal.xn--nmina-avisos-4fk.example/XN--Recibo', 'https://portal.xn--nmina-avisos-4fk.example/XN--Recibo'],
   ];
   it.each(validos)('%s %j → %s', (type, entrada, value) => {
     expect(normalizeIndicator(type, entrada)).toMatchObject({ ok: true, value });
@@ -110,6 +114,15 @@ describe('etiquetas xn-- (RFC 3492, sin depender de la versión de Node)', () =>
     ['domain', 'portal.xn--zz.example'],
     ['sender', 'rh@xn--zz.example'],
     ['sender', 'rh@XN--NMINA-AVISOS-4FK.example'],
+    // Host de una URL: las mismas reglas.
+    ['url', 'https://xn--zz.example/'],
+    ['url', 'https://xn--.example/a'],
+    ['url', 'http://xn--a-.example/'],
+    ['url', 'https://XN--NMINA-AVISOS-4FK.example/recibo'],
+    ['url', 'https://portal.xn--abc.example/'],
+    // Formas que new URL también acepta (sin // o con barra invertida).
+    ['url', 'https:XN--NMINA-AVISOS-4FK.example/recibo'],
+    ['url', 'https:\\\\Xn--nmina-avisos-4fk.example/recibo'],
   ];
   it.each(invalidos)('%s %j → inválido, con el mensaje fijo', (type, entrada) => {
     expect(normalizeIndicator(type, entrada)).toEqual({ ok: false, message: INVALID_VALUE[type] });

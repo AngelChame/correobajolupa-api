@@ -80,6 +80,21 @@ export function normalizeHost(input: string): string | null {
   return normalizeDomainName(s);
 }
 
+/**
+ * Etiquetas xn-- del host de una URL, con las mismas reglas que un dominio: new URL usa
+ * domainToASCII y cambia entre versiones de Node 24. hostname ya viene en minúsculas, así que la
+ * regla de mayúsculas mira el host tal como llegó: la primera aparición de hostname en la entrada
+ * sin distinguir mayúsculas (va antes de la ruta y no hay credenciales). Si no aparece (host en
+ * Unicode o con %), nadie escribió una etiqueta xn--: la generó la conversión, en minúsculas.
+ */
+function validUrlHost(input: string, hostname: string): boolean {
+  if (isIP(hostname.replace(/^\[|\]$/g, '')) !== 0) return true;
+  if (!hostname.split('.').every(isValidAceLabel)) return false;
+  const escapado = hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tal = new RegExp(escapado, 'i').exec(input)?.[0];
+  return !tal?.split('.').some((l) => /^xn--/i.test(l) && l !== l.toLowerCase());
+}
+
 function normalizeUrl(input: string): NormalizeResult {
   let url: URL;
   try {
@@ -90,6 +105,7 @@ function normalizeUrl(input: string): NormalizeResult {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return fail('url');
   // Credenciales en la URL (http://usuario:clave@host): no se guardan nunca.
   if (url.username !== '' || url.password !== '' || url.hostname === '') return fail('url');
+  if (!validUrlHost(input, url.hostname)) return fail('url');
   // La misma normalización que los enlaces de M1 y M4: sin query ni fragmento, host en minúsculas y punycode.
   const link = normalizeLink({ raw: url.href, displayText: null }, 0);
   if (!link || `${url.protocol}//${url.host}${url.pathname}`.length > MAX_URL) return fail('url');
