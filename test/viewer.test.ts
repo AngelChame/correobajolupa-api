@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { readHtml, readText } from '../src/viewer/read.js';
 import { FALLBACK_HTML, MAX_HTML_CHARS, renderSafeHtml } from '../src/viewer/sanitize.js';
-import { defangText } from '../src/viewer/text.js';
+import { defangLooseText, defangText } from '../src/viewer/text.js';
 
 // Visor del correo (D-035): HTML saneado y texto con URL desactivadas. Datos sintéticos.
 const FIXTURES = new URL('./fixtures/', import.meta.url);
@@ -116,6 +116,15 @@ describe('texto con URL desactivadas', () => {
       ].join('\n'),
     );
     expect(salida).not.toMatch(/https?:\/\/|www\.|\w@\w+\.\w/);
+  });
+
+  it('defangLooseText también desactiva dominios e IP sueltos y deja el texto normal', () => {
+    expect(defangLooseText('banco.example')).toBe('banco[.]example');
+    expect(defangLooseText('Entra a portal.banco-ejemplo.example ya')).toBe('Entra a portal[.]banco-ejemplo[.]example ya');
+    expect(defangLooseText('203.0.113.45')).toBe('203[.]0[.]113[.]45');
+    expect(defangLooseText('https://www.banco.example/a')).toBe('hxxps://www[.]banco[.]example/a');
+    expect(defangLooseText('Haz clic aquí')).toBe('Haz clic aquí');
+    expect(defangLooseText('Versión 1.2')).toBe('Versión 1.2');
   });
 
   it('el texto de un correo solo HTML se deriva del HTML, y queda desactivado', async () => {

@@ -57,7 +57,7 @@ describe('worker: queued → analizado', () => {
     });
     expect(detalle.analyzedAt).not.toBeNull();
     expect(detalle.links).toEqual([
-      { displayText: 'https://www.banco-ejemplo.example/cuenta', defangedUrl: 'hxxp://203[.]0[.]113[.]45/cuenta', domain: '203.0.113.45' },
+      { displayText: 'hxxps://www[.]banco-ejemplo[.]example/cuenta', defangedUrl: 'hxxp://203[.]0[.]113[.]45/cuenta', domain: '203[.]0[.]113[.]45' },
     ]);
 
     const hallazgos = FindingList.parse((await request(app).get(`/api/v1/reports/${id}/findings`).set('Cookie', ana.cookie)).body);

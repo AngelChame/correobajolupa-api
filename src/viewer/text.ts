@@ -20,3 +20,15 @@ export function defangText(text: string): string {
     .replace(/\bwww\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi, (host) => defangHost(host))
     .replace(/\b([\w.+-]+)@([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi, (_m, local: string, domain: string) => `${local}@${defangHost(domain)}`);
 }
+
+/** Dominio suelto (sin esquema ni www.) con TLD alfabético, o IPv4; no toca lo ya desactivado. */
+const BARE_HOST = /\b(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]{1,62}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/gi;
+
+/**
+ * Desactiva un texto corto que puede ser o contener una dirección (texto visible de un enlace):
+ * lo mismo que defangText y, además, dominios e IP sueltos ("banco.example" → "banco[.]example").
+ * Prefiere desactivar de más: un "archivo.pdf" sale como "archivo[.]pdf", que sigue legible.
+ */
+export function defangLooseText(text: string): string {
+  return defangText(text).replace(BARE_HOST, (host) => defangHost(host));
+}

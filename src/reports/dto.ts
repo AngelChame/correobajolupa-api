@@ -1,6 +1,8 @@
 import type { z } from 'zod';
 import { Finding, ReportDetail, type ReportSummary } from '../contract/schemas/reports.js';
 import type { Finding as FindingRow, Report } from '../generated/prisma/client.js';
+import { defangHost } from '../analysis/links.js';
+import { defangLooseText } from '../viewer/text.js';
 
 type SummaryDto = z.infer<typeof ReportSummary>;
 
@@ -64,7 +66,12 @@ export function toDetailDto(row: DetailRow): DetailDto {
     limitedReason: row.limitedReason,
     rulesVersion: row.rulesVersion,
     analyzedAt: row.analyzedAt?.toISOString() ?? null,
-    links: row.links.map((l) => ({ displayText: l.displayText, defangedUrl: l.defangedUrl, domain: l.domain })),
+    // La base guarda texto y dominio crudos (sirven para correlacionar); salen desactivados (D-017, D-055).
+    links: row.links.map((l) => ({
+      displayText: l.displayText === null ? null : defangLooseText(l.displayText),
+      defangedUrl: l.defangedUrl,
+      domain: l.domain === null ? null : defangHost(l.domain),
+    })),
     hasHtml: row.hasHtml,
     authentication: ReportDetail.shape.authentication.parse(row.authentication ?? null),
   };
