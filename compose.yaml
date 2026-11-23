@@ -248,6 +248,28 @@ services:
       db-test:
         condition: service_healthy
 
+  # `npm run test:imap:docker`: prueba de humo contra el Dovecot del laboratorio, desde dentro de
+  # imap-net (el 143 no se publica al host). default solo sirve para que npm ci descargue paquetes.
+  test-imap:
+    profiles: [test]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app
+      - test-node-modules:/app/node_modules
+    environment:
+      IMAP_LAB_SMOKE: "1"
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:?Define IMAP_LAB_PASSWORD en .env (16 caracteres o más)}
+    networks: [default, imap-net]
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run test/imap-smoke.test.ts"]
+    depends_on:
+      imap:
+        condition: service_healthy
+
 networks:
   default:
   clamav-net:
