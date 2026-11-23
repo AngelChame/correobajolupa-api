@@ -7,8 +7,11 @@ import { Prisma } from '../generated/prisma/client.js';
 import { openImapProvider } from '../mail/imap.js';
 import { MAIL_LOCATIONS, MailUnavailableError, type FolderListing, type FolderMessage, type MailLocation, type MailProvider } from '../mail/provider.js';
 import { dedupeKey, indexMessage } from './index-message.js';
+import { acquireMailboxLease, SyncInProgressError } from './lease.js';
 
 export { MailUnavailableError } from '../mail/provider.js';
+// El arriendo vive en lease.ts (lo comparten la sincronización, la entrega simulada y la cuarentena).
+export { acquireMailboxLease, releaseMailboxLease, SyncInProgressError, withMailboxLease } from './lease.js';
 
 /**
  * Sincronización de un buzón del laboratorio (M4; RF-05, RF-07, D-007, D-008): lee INBOX y
@@ -21,14 +24,6 @@ export { MailUnavailableError } from '../mail/provider.js';
  * - Registros y auditoría: solo mailboxId, conteos y tiempos. Nunca asuntos, remitentes,
  *   direcciones, Message-ID ni contenido (P-18).
  */
-
-/** Ya hay una sincronización de este buzón en curso (el paso 4 responde 409). */
-export class SyncInProgressError extends Error {
-  constructor() {
-    super('ya hay una sincronización de este buzón en curso');
-    this.name = 'SyncInProgressError';
-  }
-}
 
 /** Se agotó el tiempo de la sincronización (el paso 4 responde 503). Lo ya indexado se conserva. */
 export class SyncTimeoutError extends Error {
@@ -44,28 +39,6 @@ export class MailboxNotFoundError extends Error {
     super('el buzón no existe');
     this.name = 'MailboxNotFoundError';
   }
-}
-
-/** El arriendo vence a los 60 s: más que el presupuesto máximo (55 s), así nunca se pisa a sí mismo. */
-const LEASE_SECONDS = 60;
-
-/**
- * Toma el arriendo del buzón (sincronización o entrega simulada): devuelve su marca, o null si
- * otro proceso lo tiene. Uno vencido (proceso muerto) se retoma.
- */
-export async function acquireMailboxLease(db: Db, mailboxId: string): Promise<Date | null> {
-  const lease = await db.$queryRaw<{ sync_started_at: Date }[]>`
-    UPDATE mailboxes SET sync_started_at = now()
-    WHERE id = ${mailboxId}::uuid
-      AND (sync_started_at IS NULL OR sync_started_at < now() - make_interval(secs => ${LEASE_SECONDS}::int))
-    RETURNING sync_started_at`;
-  return lease[0]?.sync_started_at ?? null;
-}
-
-/** Suelta el arriendo solo si sigue siendo el nuestro (no el de otro proceso que lo retomó). */
-export async function releaseMailboxLease(db: Db, mailboxId: string, token: Date): Promise<void> {
-  await db.$executeRaw`
-    UPDATE mailboxes SET sync_started_at = NULL WHERE id = ${mailboxId}::uuid AND sync_started_at = ${token}`;
 }
 
 export type SyncDeps = {

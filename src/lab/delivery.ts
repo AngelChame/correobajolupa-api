@@ -5,7 +5,8 @@ import { Prisma } from '../generated/prisma/client.js';
 import { MailUnavailableError, type MailProvider } from '../mail/provider.js';
 import type { ReportStorage } from '../storage/storage.js';
 import { dedupeKey, headerDate, headerMessageId, indexMessage } from './index-message.js';
-import { acquireMailboxLease, MailboxNotFoundError, releaseMailboxLease, SyncInProgressError } from './sync.js';
+import { SyncInProgressError, withMailboxLease } from './lease.js';
+import { MailboxNotFoundError } from './sync.js';
 
 /**
  * Entrega simulada (M4, D-006): copia el .eml original de un reporte a INBOX de un buzón del
@@ -130,8 +131,6 @@ export async function simulateDelivery(deps: DeliveryDeps, input: DeliveryInput)
 
   let appended = false;
   let reason: DeliveryFailureReason | null = null;
-  let messageId: string | undefined;
-  let token: Date | null = null;
   // Todo queda dentro del try: también el buzón o el reporte inexistentes y el reporte pegado se auditan.
   try {
     const mailbox = await db.mailbox.findUnique({ where: { id: input.mailboxId }, select: { address: true } });
@@ -144,44 +143,39 @@ export async function simulateDelivery(deps: DeliveryDeps, input: DeliveryInput)
     if (report.source !== 'eml') throw new ReportNotEmlError();
 
     // El arriendo se toma después de las búsquedas: un rechazo no bloquea el buzón.
-    token = await acquireMailboxLease(db, input.mailboxId);
-    if (!token) throw new SyncInProgressError();
+    const messageId = await withMailboxLease(db, input.mailboxId, log, async () => {
+      // El original se lee del almacenamiento (D-038), nunca se recibe del cliente.
+      let raw: Buffer;
+      try {
+        raw = await deps.storage.read(report.storageKey);
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 'ENOENT') throw new ReportFileMissingError();
+        throw error;
+      }
 
-    // El original se lee del almacenamiento (D-038), nunca se recibe del cliente.
-    let raw: Buffer;
-    try {
-      raw = await deps.storage.read(report.storageKey);
-    } catch (error) {
-      if ((error as { code?: unknown }).code === 'ENOENT') throw new ReportFileMissingError();
-      throw error;
-    }
-
-    const key = dedupeKey(headerMessageId(raw), raw)!;
-    const existing = await db.indexedMessage.findUnique({ where: { mailboxId_dedupeKey: { mailboxId: input.mailboxId, dedupeKey: key } }, select: { id: true } });
-    if (existing) {
-      messageId = existing.id;
-    } else {
+      const key = dedupeKey(headerMessageId(raw), raw)!;
+      const existing = await db.indexedMessage.findUnique({ where: { mailboxId_dedupeKey: { mailboxId: input.mailboxId, dedupeKey: key } }, select: { id: true } });
+      if (existing) return existing.id;
       const provider = await deps.openProvider(mailbox.address);
       try {
         const { uid, uidValidity } = await provider.append('inbox', raw, headerDate(raw));
         appended = true;
         try {
-          messageId = await indexMessage(db, { mailboxId: input.mailboxId, location: 'inbox', uid, uidValidity, dedupeKey: key, raw, institutionalDomains: deps.institutionalDomains });
+          return await indexMessage(db, { mailboxId: input.mailboxId, location: 'inbox', uid, uidValidity, dedupeKey: key, raw, institutionalDomains: deps.institutionalDomains });
         } catch (error) {
           // Ya indexado por otra vía (no debería pasar con el arriendo): se devuelve ese.
           if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
-          messageId = (await db.indexedMessage.findUniqueOrThrow({ where: { mailboxId_dedupeKey: { mailboxId: input.mailboxId, dedupeKey: key } }, select: { id: true } })).id;
+          return (await db.indexedMessage.findUniqueOrThrow({ where: { mailboxId_dedupeKey: { mailboxId: input.mailboxId, dedupeKey: key } }, select: { id: true } })).id;
         }
       } finally {
         await provider.close().catch(() => {});
       }
-    }
+    });
     return { messageId, appended };
   } catch (error) {
     reason = failureReason(error);
     throw error;
   } finally {
-    if (token) await releaseMailboxLease(db, input.mailboxId, token).catch(() => log.error('no se pudo soltar el arriendo del buzón'));
     // Siempre auditada (D-006), también los rechazos.
     await auditDelivery(db, log, {
       mailboxId: input.mailboxId,
