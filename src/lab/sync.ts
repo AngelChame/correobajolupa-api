@@ -4,7 +4,7 @@ import { AuditAction, recordAudit } from '../audit.js';
 import type { ImapLabConfig } from '../config.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
-import { openImapProvider } from '../mail/imap.js';
+import { labImapUser, openImapProvider } from '../mail/imap.js';
 import { MAIL_LOCATIONS, MailUnavailableError, type FolderListing, type FolderMessage, type MailLocation, type MailProvider } from '../mail/provider.js';
 import { dedupeKey, indexMessage } from './index-message.js';
 import { acquireMailboxLease, SyncInProgressError } from './lease.js';
@@ -76,7 +76,8 @@ export function labProviderFactory(config: ImapLabConfig): (address: string) => 
   return async (address) => {
     // Sin contraseña válida el laboratorio no está disponible (503); la API y el modo real siguen (D-003).
     if (!config.IMAP_LAB_PASSWORD || config.IMAP_LAB_PASSWORD.length < 16) throw new MailUnavailableError('falta IMAP_LAB_PASSWORD');
-    return openImapProvider({ host: config.IMAP_LAB_HOST, port: config.IMAP_LAB_PORT, user: address, password: config.IMAP_LAB_PASSWORD });
+    // Entra como usuario de servicio (buzón*cbl-servicio): la ACL solo le deja Cuarentena a él (nº 2).
+    return openImapProvider({ host: config.IMAP_LAB_HOST, port: config.IMAP_LAB_PORT, user: labImapUser(address), password: config.IMAP_LAB_PASSWORD });
   };
 }
 

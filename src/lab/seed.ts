@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { ImapFlow } from 'imapflow';
+import { labImapUser } from '../mail/imap.js';
 import { z } from 'zod';
 import { loadImapLabConfig } from '../config.js';
 
@@ -81,7 +82,8 @@ export async function seedLab(target: SeedTarget, expectedHost: string, dir: URL
       port: target.port,
       secure: false,
       doSTARTTLS: false,
-      auth: { user: mailbox, pass: target.password },
+      // Usuario de servicio: busca también en Cuarentena, que el dueño no puede leer (ACL, nº 2).
+      auth: { user: labImapUser(mailbox), pass: target.password },
       // Sin registros de imapflow: escribirían comandos y respuestas del servidor.
       logger: false,
     });

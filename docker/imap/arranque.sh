@@ -25,7 +25,12 @@ for usuario in student teacher staff; do
   # usuario:hash:uid:gid:gecos:home:shell (passwd-file de Dovecot)
   printf '%s@lab.example:%s:5000:5000::/var/vmail/lab.example/%s::\n' "$usuario" "$HASH" "$usuario" >> "$TMP"
 done
+# Usuario de servicio (maestro) de la API, con el MISMO hash: no hay una contraseña nueva.
+MASTERS=/run/dovecot-lab/masters
+printf 'cbl-servicio:%s
+' "$HASH" > "$MASTERS.tmp"
 unset HASH
+mv "$MASTERS.tmp" "$MASTERS"
 mv "$TMP" "$USERS"
 
 echo "arranque: usuarios del laboratorio listos (student, teacher y staff @lab.example)" >&2

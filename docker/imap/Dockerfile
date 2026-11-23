@@ -21,6 +21,8 @@ RUN apt-get update \
   && chmod 0700 /var/vmail /run/dovecot-lab
 
 COPY dovecot.conf /etc/dovecot/dovecot.conf
+# ACL global (M7, nº 2): legible por Dovecot, sin permisos de escritura para nadie.
+COPY --chmod=0444 dovecot-acl /etc/dovecot/dovecot-acl
 COPY --chmod=0755 arranque.sh /usr/local/bin/arranque.sh
 COPY --chmod=0755 salud.sh /usr/local/bin/salud.sh
 

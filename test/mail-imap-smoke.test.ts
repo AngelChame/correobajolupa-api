@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ImapFlow } from 'imapflow';
 import { describe, expect, it } from 'vitest';
-import { openImapProvider } from '../src/mail/imap.js';
+import { labImapUser, openImapProvider } from '../src/mail/imap.js';
 import { MailUnavailableError, MoveUnconfirmedError } from '../src/mail/provider.js';
 import { loadSeedMessages, seedLab } from '../src/lab/seed.js';
 
@@ -13,6 +13,8 @@ const host = process.env.IMAP_LAB_HOST || 'imap';
 const port = Number(process.env.IMAP_LAB_PORT || 143);
 const password = process.env.IMAP_LAB_PASSWORD ?? '';
 const BUZON = 'teacher@lab.example';
+// La API entra como usuario de servicio (ACL de Cuarentena, nº 2).
+const SERVICIO = labImapUser(BUZON);
 const LAB = new URL('./fixtures/lab/', import.meta.url);
 const CRLF = String.fromCharCode(13, 10);
 
@@ -22,7 +24,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
     await seedLab({ host, port, password }, host);
     const propios = loadSeedMessages().filter((m) => m.mailbox === BUZON);
 
-    const mail = await openImapProvider({ host, port, user: BUZON, password });
+    const mail = await openImapProvider({ host, port, user: SERVICIO, password });
     try {
       const primera = await mail.listFolder('inbox');
       const segunda = await mail.listFolder('inbox');
@@ -57,7 +59,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
     const raw = Buffer.from(
       ['From: Prueba <smoke@lab.example>', `To: ${BUZON}`, 'Subject: Prueba de APPEND', `Message-ID: ${messageId}`, 'Date: Mon, 23 Nov 2026 12:00:00 -0600', '', 'Mensaje sintético.', ''].join(CRLF),
     );
-    const mail = await openImapProvider({ host, port, user: BUZON, password });
+    const mail = await openImapProvider({ host, port, user: SERVICIO, password });
     try {
       const antes = await mail.listFolder('inbox');
       const r = await mail.append('inbox', raw, new Date('2026-11-23T18:00:00Z'));
@@ -71,7 +73,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
     } finally {
       await mail.close();
       // Limpieza con imapflow directo: el proveedor no borra (eso no es de este módulo).
-      const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: BUZON, pass: password }, logger: false });
+      const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: SERVICIO, pass: password }, logger: false });
       await imap.connect();
       const lock = await imap.getMailboxLock('INBOX');
       try {
@@ -89,7 +91,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
     const raw = Buffer.from(
       ['From: Prueba <smoke@lab.example>', `To: ${BUZON}`, 'Subject: Prueba de MOVE', `Message-ID: ${messageId}`, 'Date: Mon, 23 Nov 2026 12:00:00 -0600', '', 'Mensaje sintético.', ''].join(CRLF),
     );
-    const mail = await openImapProvider({ host, port, user: BUZON, password });
+    const mail = await openImapProvider({ host, port, user: SERVICIO, password });
     try {
       const sembradosAntes = (await mail.listFolder('inbox')).messages.length;
       const insertado = await mail.append('inbox', raw, null);
@@ -123,7 +125,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
       expect((await mail.listFolder('inbox')).messages.length).toBe(sembradosAntes + 1);
     } finally {
       await mail.close();
-      const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: BUZON, pass: password }, logger: false });
+      const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: SERVICIO, pass: password }, logger: false });
       await imap.connect();
       try {
         for (const carpeta of ['INBOX', 'Cuarentena']) {
@@ -143,7 +145,7 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
 
   it('una contraseña incorrecta da MailUnavailableError sin la contraseña en el mensaje', async () => {
     const incorrecta = `${password}-MARCADOR`;
-    const error = await openImapProvider({ host, port, user: BUZON, password: incorrecta }).catch((e: unknown) => e);
+    const error = await openImapProvider({ host, port, user: SERVICIO, password: incorrecta }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(MailUnavailableError);
     expect((error as Error).message).not.toContain('MARCADOR');
   });

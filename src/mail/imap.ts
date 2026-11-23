@@ -14,6 +14,18 @@ import {
 /** Nombre de cada carpeta neutral en el Dovecot del laboratorio (docker/imap/dovecot.conf). */
 const FOLDERS: Record<MailLocation, string> = { inbox: 'INBOX', quarantine: 'Cuarentena' };
 
+/**
+ * Usuario de servicio del laboratorio (M7, decisión nº 2): la API entra a cada buzón como
+ * "buzón*cbl-servicio" (usuario maestro de Dovecot, con la misma IMAP_LAB_PASSWORD). La ACL global
+ * le da todos los derechos y al dueño le quita los de Cuarentena (docker/imap/dovecot-acl).
+ */
+export const LAB_SERVICE_USER = 'cbl-servicio';
+
+/** Nombre de entrada del servicio para un buzón: "<buzón>*cbl-servicio" (auth_master_user_separator). */
+export function labImapUser(address: string): string {
+  return `${address}*${LAB_SERVICE_USER}`;
+}
+
 export type ImapOptions = {
   host: string;
   port: number;

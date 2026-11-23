@@ -1,6 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { describe, expect, it } from 'vitest';
 import { LAB_MAILBOXES, loadSeedMessages, seedLab } from '../src/lab/seed.js';
+import { labImapUser } from '../src/mail/imap.js';
 
 // Prueba de humo de la siembra contra el Dovecot REAL del laboratorio. Solo con IMAP_LAB_SMOKE=1
 // (como test/imap-smoke.test.ts); se corre dentro de imap-net con npm run test:imap:docker.
@@ -12,7 +13,7 @@ const password = process.env.IMAP_LAB_PASSWORD ?? '';
 
 /** Cuántas veces está cada Message-ID del buzón, sumando INBOX y Cuarentena. */
 async function copias(user: string, messageIds: string[]): Promise<number[]> {
-  const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user, pass: password }, logger: false });
+  const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: labImapUser(user), pass: password }, logger: false });
   await imap.connect();
   try {
     const total = messageIds.map(() => 0);
@@ -53,5 +54,5 @@ describe.skipIf(!activa)('siembra del laboratorio real (prueba de humo)', () => 
       expect(ids, mailbox).toHaveLength(7);
       expect(await copias(mailbox, ids), mailbox).toEqual([1, 1, 1, 1, 1, 1, 1]);
     }
-  });
+  }, 30_000); // Muchas entradas seguidas: tras los intentos fallidos de otras pruebas, Dovecot puede tardar en responder.
 });

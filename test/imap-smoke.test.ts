@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import { afterAll, describe, expect, it } from 'vitest';
+import { labImapUser } from '../src/mail/imap.js';
 
 // Prueba de humo contra el Dovecot REAL del laboratorio (D-043). Solo corre con IMAP_LAB_SMOKE=1;
 // sin ella se salta y el CI sigue igual. El puerto 143 no se publica al host, así que se corre
@@ -41,7 +42,7 @@ describe.skipIf(!activa)('IMAP del laboratorio real (prueba de humo)', () => {
 
   // La prueba no deja basura: borra el mensaje de INBOX y de Cuarentena aunque algo falle.
   afterAll(async () => {
-    const imap = cliente(USUARIOS[0]!, password);
+    const imap = cliente(labImapUser(USUARIOS[0]!), password);
     await imap.connect();
     try {
       for (const carpeta of ['INBOX', CUARENTENA]) {
@@ -63,15 +64,25 @@ describe.skipIf(!activa)('IMAP del laboratorio real (prueba de humo)', () => {
     expect(password.length, 'define IMAP_LAB_PASSWORD').toBeGreaterThanOrEqual(16);
   });
 
-  it.each(USUARIOS)('%s entra con la contraseña correcta y ve INBOX y Cuarentena suscritas', async (user) => {
+  it.each(USUARIOS)('%s entra con la contraseña correcta; ve INBOX, y el servicio ve INBOX y Cuarentena suscritas', async (user) => {
     const imap = cliente(user, password);
     await imap.connect();
     try {
       expect(imap.authenticated).toBeTruthy();
       const suscritas = (await imap.list()).filter((m) => m.subscribed).map((m) => m.path);
-      expect(suscritas).toEqual(expect.arrayContaining(['INBOX', CUARENTENA]));
+      expect(suscritas).toContain('INBOX');
+      // Cuarentena no se le lista al dueño: la ACL le quita hasta el derecho de verla (nº 2).
+      expect(suscritas).not.toContain(CUARENTENA);
     } finally {
       await imap.logout();
+    }
+    const servicio = cliente(labImapUser(user), password);
+    await servicio.connect();
+    try {
+      const suscritas = (await servicio.list()).filter((m) => m.subscribed).map((m) => m.path);
+      expect(suscritas).toEqual(expect.arrayContaining(['INBOX', CUARENTENA]));
+    } finally {
+      await servicio.logout();
     }
   });
 
@@ -92,9 +103,9 @@ describe.skipIf(!activa)('IMAP del laboratorio real (prueba de humo)', () => {
     }
   });
 
-  it('APPEND devuelve UID y UIDVALIDITY; se lee igual por UID; UID MOVE lo pasa a Cuarentena', async () => {
+  it('APPEND devuelve UID y UIDVALIDITY; se lee igual por UID; UID MOVE lo pasa a Cuarentena (usuario de servicio)', async () => {
     const original = mensajeSintetico(messageId);
-    const imap = cliente(USUARIOS[0]!, password);
+    const imap = cliente(labImapUser(USUARIOS[0]!), password);
     await imap.connect();
     try {
       // APPEND con APPENDUID (UIDPLUS): uid y uidValidity vienen en la respuesta.
