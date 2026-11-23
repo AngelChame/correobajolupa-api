@@ -4,6 +4,7 @@ import { createDecoyHash } from './auth/password.js';
 import { loadConfig } from './config.js';
 import { connectDb, disconnectDb } from './db/client.js';
 import { createLogger } from './logger.js';
+import { createDiskStorage } from './storage/disk.js';
 
 const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL);
@@ -14,7 +15,9 @@ const db = connectDb(config.DATABASE_URL);
 await ensureFirstAdmin(db, config, logger);
 // El hash señuelo se calcula una sola vez, con los mismos parámetros que los reales.
 const decoyHash = await createDecoyHash();
-const app = createApp({ logger, db, config, decoyHash });
+// Archivos de reportes en el volumen montado en STORAGE_DIR (D-038).
+const storage = createDiskStorage(config.STORAGE_DIR);
+const app = createApp({ logger, db, config, decoyHash, storage });
 
 const server = app.listen(config.PORT);
 server.on('listening', () => logger.info({ port: config.PORT, env: config.NODE_ENV }, 'API escuchando'));

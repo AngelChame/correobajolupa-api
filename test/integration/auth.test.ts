@@ -9,7 +9,7 @@ import { Session } from '../../src/contract/schemas/auth.js';
 import { ErrorResponse } from '../../src/contract/schemas/common.js';
 import { createDb } from '../../src/db/client.js';
 import { createLogger } from '../../src/logger.js';
-import { testConfig } from '../helpers.js';
+import { fakeStorage, testConfig } from '../helpers.js';
 import { testDatabaseUrl } from './test-db.js';
 
 const db = createDb(testDatabaseUrl());
@@ -27,7 +27,7 @@ function crearApp(overrides: NodeJS.ProcessEnv = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
   const config = testConfig({ DATABASE_URL: testDatabaseUrl(), ...overrides });
-  return { app: createApp({ logger, db, config, decoyHash }), lineas, logger, config };
+  return { app: createApp({ logger, db, config, decoyHash, storage: fakeStorage() }), lineas, logger, config };
 }
 
 const CLAVE = 'una-clave-de-prueba-larga';

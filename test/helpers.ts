@@ -3,6 +3,7 @@ import { createDecoyHash } from '../src/auth/password.js';
 import { loadConfig, type Config } from '../src/config.js';
 import type { Db } from '../src/db/client.js';
 import { createLogger } from '../src/logger.js';
+import type { ReportStorage } from '../src/storage/storage.js';
 
 /** Configuración de prueba: valores válidos y sintéticos, con overrides por prueba. */
 export function testConfig(overrides: NodeJS.ProcessEnv = {}): Config {
@@ -30,6 +31,12 @@ export function fakeDb(): Db {
   });
 }
 
+/** Almacenamiento falso para las pruebas unitarias: cualquier uso falla (igual que fakeDb). */
+export function fakeStorage(): ReportStorage {
+  const sinDisco = () => Promise.reject(new Error('Esta prueba unitaria intentó usar el almacenamiento.'));
+  return { save: sinDisco, read: sinDisco, deleteReport: sinDisco };
+}
+
 /** Hash señuelo compartido por las pruebas (se calcula una vez por archivo). */
 export const decoyHash = await createDecoyHash();
 
@@ -37,6 +44,6 @@ export const decoyHash = await createDecoyHash();
 export function appConRegistros(overrides: NodeJS.ProcessEnv = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
-  const app = createApp({ logger, db: fakeDb(), config: testConfig(overrides), decoyHash });
+  const app = createApp({ logger, db: fakeDb(), config: testConfig(overrides), decoyHash, storage: fakeStorage() });
   return { app, lineas };
 }

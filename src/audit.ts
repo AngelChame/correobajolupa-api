@@ -14,6 +14,8 @@ export const AuditAction = {
   roleChange: 'user.role_change',
   deactivate: 'user.deactivate',
   activate: 'user.activate',
+  reportCreate: 'report.create',
+  reportDelete: 'report.delete',
   bootstrapAdmin: 'system.bootstrap_admin',
 } as const;
 

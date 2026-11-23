@@ -11,6 +11,8 @@ import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
 import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
+import { createReportsRouter } from './reports/routes.js';
+import type { ReportStorage } from './storage/storage.js';
 import { createUsersRouter } from './users/routes.js';
 
 /** Se acepta el X-Request-Id que llega solo si es corto y sin caracteres raros; si no, se genera uno. */
@@ -28,9 +30,11 @@ export type AppDeps = {
   config: Config;
   /** Hash señuelo de Argon2id, calculado una vez al arrancar (createDecoyHash). */
   decoyHash: string;
+  /** Archivos de los reportes (D-038). */
+  storage: ReportStorage;
 };
 
-export function createApp({ logger, db, config, decoyHash }: AppDeps) {
+export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   // 'trust proxy' depende de TRUST_PROXY_HOPS (0 por defecto = apagado, mientras no exista el
@@ -88,6 +92,7 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   });
   v1.use('/auth', createAuthRouter({ db, config, decoyHash, limiters: createAuthLimiters(config) }));
   v1.use('/users', createUsersRouter({ db }));
+  v1.use('/reports', createReportsRouter({ db, config, storage }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

@@ -15,6 +15,15 @@ export const REDACT_PATHS = [
   '*.token',
   'body',
   '*.body',
+  // Texto de correos (M1): asunto, remitente, texto pegado y nombre del archivo subido.
+  'subject',
+  '*.subject',
+  'fromAddress',
+  '*.fromAddress',
+  'text',
+  '*.text',
+  'originalname',
+  '*.originalname',
 ];
 
 export function createLogger(level: string, destination?: DestinationStream): Logger {
