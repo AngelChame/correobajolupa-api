@@ -44,17 +44,37 @@ La API y el worker están en `imap-net`, pero **no dependen** de `imap` (sin `de
 
 **Healthcheck** (`salud.sh`): Dovecot responde `* OK` en el 143 y `doveadm user student@lab.example` encuentra al usuario. No usa la contraseña.
 
-## Prueba de humo
+## Sembrar los buzones
+
+Los buzones arrancan vacíos. Para cargar los 21 mensajes sintéticos del laboratorio (`test/fixtures/lab/`, detalle en `test/fixtures/README.md`):
+
+```bash
+npm run lab:seed     # servicio lab-seed, perfil tools, dentro de imap-net
+```
+
+Imprime solo conteos, por ejemplo `student@lab.example: insertados 7, saltados 0`. Es **idempotente**: antes de insertar busca el `Message-ID` en `INBOX` y en `Cuarentena`, así que una segunda corrida dice `insertados 0, saltados 7` y nunca duplica. Cada mensaje entra a `INBOX` con `APPEND` y su fecha interna es la del encabezado `Date`. El script (`src/lab/seed.ts`) valida el manifiesto y que cada `.eml` exista antes de conectarse; se niega sin `IMAP_LAB_PASSWORD` o si el destino no es `IMAP_LAB_HOST`. El repo se monta de solo lectura en el contenedor.
+
+| Buzón | Mensajes (7 cada uno) |
+| --- | --- |
+| `student@lab.example` | A1, B3, C1, D3, LA1, LB1, LD1 |
+| `teacher@lab.example` | A2, B1, D1, LA2, LB2, LC1, LD2 |
+| `staff@lab.example` | A3, B2, C2, D2, LA3, LC2, LD3 |
+
+Para empezar de cero: `docker compose down` y borrar el volumen `imap-data` (`docker volume rm correobajolupa_imap-data`); al volver a levantar, sembrar de nuevo.
+
+## Pruebas de humo
 
 `test/imap-smoke.test.ts` corre contra el Dovecot real: los tres usuarios entran, una contraseña incorrecta no, el servidor anuncia UIDPLUS y MOVE **después** de autenticarse (antes del login Dovecot 2.3 no los anuncia, como ya se vio el 13 nov), `APPEND` devuelve UID y UIDVALIDITY, el mensaje se lee igual byte a byte por UID y `UID MOVE` lo pasa a `Cuarentena`. Al final lo borra.
 
-Como el 143 no se publica, la prueba se corre **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`):
+`test/lab-seed-smoke.test.ts` siembra dos veces: cada mensaje queda una sola vez (7 por buzón) y la segunda corrida inserta 0. Deja los buzones sembrados.
+
+Como el 143 no se publica, las dos se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
 
 ```bash
 npm run test:imap:docker
 ```
 
-Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) la prueba se salta.
+Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
 
 ## Comprobaciones manuales (23 nov 2026)
 
