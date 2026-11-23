@@ -23,6 +23,21 @@ describe('buildSummary: encabezado', () => {
     expect(resumen({}).headline).toBe(HEADLINES.noFindings);
   });
 
+  it('completed sin hallazgos con adjuntos en error o unsupported: encabezado de adjuntos sin escanear', () => {
+    expect(resumen({ scanStatuses: ['error'] }).headline).toBe(HEADLINES.noFindingsUnscanned);
+    expect(resumen({ scanStatuses: ['unsupported', 'not_detected'] }).headline).toBe(HEADLINES.noFindingsUnscanned);
+    expect(resumen({ scanStatuses: ['not_detected'] }).headline).toBe(HEADLINES.noFindings);
+  });
+
+  it('detected sigue mandando y limited conserva su encabezado aunque haya adjuntos sin escanear', () => {
+    expect(resumen({ scanStatuses: ['error', 'detected'] }).headline).toBe(HEADLINES.detectedOne);
+    expect(resumen({ status: 'limited', scanStatuses: ['error', 'unsupported'] }).headline).toBe(HEADLINES.limitedNoFindings);
+  });
+
+  it('con hallazgos, adjuntos sin escanear no cambian el encabezado por prioridad', () => {
+    expect(resumen({ findingsCount: 1, priority: 'low', scanStatuses: ['error'] }).headline).toBe(HEADLINES.low);
+  });
+
   it('con hallazgos, según la prioridad (nula = medium)', () => {
     expect(resumen({ findingsCount: 2, priority: 'high' }).headline).toBe(HEADLINES.high);
     expect(resumen({ findingsCount: 1, priority: 'medium' }).headline).toBe(HEADLINES.medium);
@@ -61,7 +76,7 @@ describe('buildSummary: texto', () => {
 
   it('0 hallazgos con un adjunto en error: nunca "limpio"', () => {
     const s = resumen({ scanStatuses: ['error'] });
-    expect(s.headline).toBe(HEADLINES.noFindings);
+    expect(s.headline).toBe(HEADLINES.noFindingsUnscanned);
     expect(s.text).toBe(`${SUMMARY_PHRASES.noFindings} ${SUMMARY_PHRASES.scanError(1)}`);
     expect(s.text).toContain('eso no significa que esté limpio');
   });

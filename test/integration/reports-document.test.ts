@@ -203,6 +203,7 @@ describe('informe con adjuntos', () => {
 
     const { doc } = await informe(app, ana, id);
     expect(doc.attachments.map((a) => a.scanStatus)).toEqual(['error']);
+    expect(doc.summary.headline).toBe(HEADLINES.noFindingsUnscanned);
     expect(doc.summary.text).toContain(SUMMARY_PHRASES.scanError(1));
     // "limpio" y "seguro" solo aparecen negados.
     const sinNegaciones = doc.summary.text.replaceAll('no significa que esté limpio', '').replaceAll('no significa que el correo sea seguro', '');

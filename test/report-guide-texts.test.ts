@@ -64,6 +64,12 @@ describe('textos de la guía', () => {
     expect(SUMMARY_PHRASES.unsupported(4)).toMatch(/^4 adjuntos no se escanearon/);
   });
 
+  it('textos ajustados: R3 sin afirmar qué pide la institución; encabezados prudentes', () => {
+    expect(RULE_GUIDES.R3.whatToDo[1]).toBe('No compartas contraseñas ni códigos por correo ni por enlaces de este mensaje.');
+    expect(HEADLINES.high).toBe('Se encontraron señales de riesgo importantes');
+    expect(HEADLINES.noFindingsUnscanned).toBe('Sin señales, pero hay adjuntos sin escanear');
+  });
+
   it('versión de la guía', () => {
     expect(GUIDE_VERSION).toBe('g1-2026.11');
   });

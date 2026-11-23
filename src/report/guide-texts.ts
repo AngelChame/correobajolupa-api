@@ -60,7 +60,7 @@ export const RULE_GUIDES: Readonly<Record<RuleIdValue, GuideText>> = {
       'Los atacantes registran dominios casi iguales a los reales (por ejemplo, cambiando o agregando una letra) para hacerse pasar por la institución. Un dominio parecido no es el mismo dominio.',
     whatToDo: [
       'No abras enlaces ni descargues archivos de este correo.',
-      'No compartas contraseñas ni códigos: la institución no los pide por correo.',
+      'No compartas contraseñas ni códigos por correo ni por enlaces de este mensaje.',
       'Si crees que puede ser real, contacta a tu área de soporte por un canal que ya conozcas.',
     ],
     forAnalyst: [
@@ -165,7 +165,8 @@ export const HEADLINES = {
   detectedMany: 'Hay adjuntos que coinciden con firmas de malware',
   limitedNoFindings: 'Análisis limitado: sin señales, pero incompleto',
   noFindings: 'No se encontraron señales con las reglas actuales',
-  high: 'Se encontraron varias señales de riesgo',
+  noFindingsUnscanned: 'Sin señales, pero hay adjuntos sin escanear',
+  high: 'Se encontraron señales de riesgo importantes',
   medium: 'Se encontraron señales que conviene revisar',
   low: 'Se encontró una señal débil',
 } as const;

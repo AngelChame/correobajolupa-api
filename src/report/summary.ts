@@ -37,7 +37,9 @@ export function buildSummary({ status, findingsCount, priority, scanStatuses }: 
 
   let headline: string;
   if (detectados > 0) headline = detectados === 1 ? HEADLINES.detectedOne : HEADLINES.detectedMany;
-  else if (findingsCount === 0) headline = status === 'limited' ? HEADLINES.limitedNoFindings : HEADLINES.noFindings;
+  else if (findingsCount === 0 && status === 'limited') headline = HEADLINES.limitedNoFindings;
+  // Sin hallazgos pero con adjuntos que no se escanearon: el encabezado no debe sonar a limpio.
+  else if (findingsCount === 0) headline = conError + noSoportados > 0 ? HEADLINES.noFindingsUnscanned : HEADLINES.noFindings;
   else if (priority === 'high') headline = HEADLINES.high;
   else if (priority === 'low') headline = HEADLINES.low;
   else headline = HEADLINES.medium;
