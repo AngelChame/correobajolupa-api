@@ -17,7 +17,7 @@ export const CLAVE = 'una-clave-de-prueba-larga';
 const claveHash = await hashPassword(CLAVE);
 
 export async function limpiarBase(): Promise<void> {
-  await db.$executeRawUnsafe('TRUNCATE audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
 }
 
 export function crearApp(overrides: NodeJS.ProcessEnv = {}) {

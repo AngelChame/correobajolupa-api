@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
 });
 
 function crearApp(overrides: NodeJS.ProcessEnv = {}) {
