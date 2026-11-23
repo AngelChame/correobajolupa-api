@@ -30,6 +30,8 @@ export const AuditAction = {
   incidentIndicatorAdd: 'incident.indicator_add',
   incidentIndicatorRemove: 'incident.indicator_remove',
   incidentComment: 'incident.comment',
+  quarantineExecute: 'quarantine.execute',
+  quarantineRestore: 'quarantine.restore',
   bootstrapAdmin: 'system.bootstrap_admin',
   cleanup: 'system.cleanup',
 } as const;
