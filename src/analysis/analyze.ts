@@ -1,4 +1,5 @@
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
+import { extractAttachments } from './attachments.js';
 import { readAuthentication } from './authentication.js';
 import { extractHtmlLinks, extractTextUrls, MAX_LINKS, normalizeLink } from './links.js';
 import { applyRules, priorityOf, RULES_VERSION } from './rules.js';
@@ -70,6 +71,9 @@ function finish(parsed: ParsedMail, parseError: boolean, missingHeaders: boolean
     links.push(link);
   }
 
+  // Si solo se leyeron encabezados (tooDeep o el parseo completo falló), no hay adjuntos.
+  const { attachments, ignored } = withBody ? extractAttachments(parsed.attachments) : { attachments: [], ignored: 0 };
+
   const findings = applyRules({ fromAddress, replyTo, links, institutionalDomains: options.institutionalDomains });
   const limitedReason = parseError ? 'parse_error' : lacksHeaders ? 'missing_headers' : null;
   return {
@@ -80,6 +84,8 @@ function finish(parsed: ParsedMail, parseError: boolean, missingHeaders: boolean
     hasHtml: html !== '',
     authentication: readAuthentication(parsed.headerLines),
     links,
+    attachments,
+    attachmentsIgnored: ignored,
     findings,
     priority: priorityOf(findings),
     rulesVersion: RULES_VERSION,
@@ -96,6 +102,8 @@ function emptyResult(): AnalysisResult {
     hasHtml: false,
     authentication: null,
     links: [],
+    attachments: [],
+    attachmentsIgnored: 0,
     findings: [],
     priority: 'low',
     rulesVersion: RULES_VERSION,

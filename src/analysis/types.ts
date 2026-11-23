@@ -35,6 +35,33 @@ export type AnalyzedLink = {
   domain: string | null;
 };
 
+/** Familia de archivo según sus primeros bytes, su extensión o su tipo declarado (R7). */
+export type FileFamily = 'executable' | 'pdf' | 'zip' | 'ole2' | 'rar' | '7z' | 'gzip' | 'image' | 'rtf' | 'text';
+
+/** Adjunto extraído del correo (M2). Nunca se ejecuta ni se descomprime (D-018). */
+export type AnalyzedAttachment = {
+  /** Orden en el correo, desde 0. */
+  position: number;
+  /** Nombre saneado para guardar y mostrar (texto hostil); null si no traía. */
+  fileName: string | null;
+  /** Content-Type declarado, en minúsculas. */
+  declaredType: string | null;
+  /** Tipo por los primeros bytes; null si no se reconoce. */
+  detectedType: string | null;
+  sizeBytes: number;
+  sha256: string;
+  /** Última y penúltima extensión del nombre original (para R7; no se guardan). */
+  extension: string | null;
+  previousExtension: string | null;
+  /** El nombre original traía caracteres de dirección de texto (U+202E...). */
+  hasBidiControls: boolean;
+  /**
+   * Bytes decodificados, SOLO en memoria para el SHA-256 ya calculado y para ClamAV. Nunca se
+   * guardan, nunca se registran y nunca se devuelven por la API.
+   */
+  content: Buffer;
+};
+
 export type Authentication = { [K in 'spf' | 'dkim' | 'dmarc']: z.infer<typeof AuthResult> };
 
 export type AnalysisOptions = { institutionalDomains: readonly string[] };
@@ -47,6 +74,9 @@ export type AnalysisResult = {
   hasHtml: boolean;
   authentication: Authentication | null;
   links: AnalyzedLink[];
+  attachments: AnalyzedAttachment[];
+  /** Adjuntos que pasaron del tope y no se registraron (solo el conteo va a los registros). */
+  attachmentsIgnored: number;
   findings: RawFinding[];
   priority: Priority;
   rulesVersion: string;
