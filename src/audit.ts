@@ -18,6 +18,11 @@ export const AuditAction = {
   reportDelete: 'report.delete',
   mailboxSync: 'mailbox.sync',
   mailboxSimulatedDelivery: 'mailbox.simulated_delivery',
+  exclusionCreate: 'exclusion.create',
+  exclusionDelete: 'exclusion.delete',
+  indicatorPropose: 'indicator.propose',
+  indicatorConfirm: 'indicator.confirm',
+  indicatorDismiss: 'indicator.dismiss',
   bootstrapAdmin: 'system.bootstrap_admin',
   cleanup: 'system.cleanup',
 } as const;

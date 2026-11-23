@@ -11,6 +11,7 @@ import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
 import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
+import { createIndicatorsRouter } from './indicators/routes.js';
 import { createLabRouter } from './lab/routes.js';
 import { labProviderFactory } from './lab/sync.js';
 import type { MailProvider } from './mail/provider.js';
@@ -119,6 +120,8 @@ export function createApp({ logger, db, config, decoyHash, storage, openMailProv
   v1.use('/reports', createReportsRouter({ db, config, storage }));
   // Laboratorio IMAP (M4): /mailboxes y /messages. Independiente del modo real (D-003).
   v1.use(createLabRouter({ db, config, storage, openProvider: openMailProvider ?? labProviderFactory(config) }));
+  // Indicadores y lista de exclusión (M5): /indicators y /exclusions.
+  v1.use(createIndicatorsRouter({ db, config }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {
