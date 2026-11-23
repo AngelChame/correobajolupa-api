@@ -65,6 +65,8 @@ describe('lista de exclusión', () => {
     expect(eventos.map((e) => [e.action, e.result, e.targetType, e.targetId, e.actorId])).toEqual([
       ['exclusion.create', 'success', 'exclusion', creada.id, analista.userId],
       ['exclusion.delete', 'success', 'exclusion', creada.id, analista.userId],
+      // El segundo borrado (404) también queda.
+      ['exclusion.delete', 'failure', 'exclusion', creada.id, analista.userId],
     ]);
     // Ni la auditoría ni los registros guardan el dominio ni el motivo.
     expect(JSON.stringify(eventos)).not.toMatch(/nube-compartida|archivos/i);
@@ -83,6 +85,11 @@ describe('lista de exclusión', () => {
     // Frontera de etiqueta: parecido no es subdominio.
     expect((await crear(a, admin, { domain: 'xnube-compartida.example' })).status).toBe(201);
     expect(await db.exclusion.count()).toBe(2);
+
+    // Los 5 rechazos quedan en la auditoría, sin el dominio que se intentó.
+    const fallos = await db.auditEvent.findMany({ where: { action: 'exclusion.create', result: 'failure' } });
+    expect(fallos.map((e) => [e.targetId, e.metadata])).toEqual(Array(5).fill([null, { reason: 'already_excluded' }]));
+    expect(JSON.stringify(fallos)).not.toMatch(/nube|universidad/i);
   });
 
   it('400 con cuerpo o dominio inválido, sin repetir el valor; 404 con ID inexistente o mal formado', async () => {
@@ -104,5 +111,20 @@ describe('lista de exclusión', () => {
     expect(malFormado.status).toBe(404);
     expect(malFormado.body).toMatchObject({ code: 'not_found', message: 'La exclusión no existe.' });
     expect(await db.exclusion.count()).toBe(0);
+
+    // Cada rechazo, en orden, con su motivo; nunca el texto que mandó el cliente.
+    const eventos = await db.auditEvent.findMany({ where: { action: { startsWith: 'exclusion.' } }, orderBy: { createdAt: 'asc' } });
+    expect(eventos.map((e) => [e.action, e.targetId, (e.metadata as { reason: string }).reason])).toEqual([
+      ...Array(4).fill(['exclusion.create', null, 'invalid_body']),
+      ...Array(4).fill(['exclusion.create', null, 'invalid_domain']),
+      ['exclusion.delete', UUID_INEXISTENTE, 'not_found'],
+      ['exclusion.delete', null, 'not_found'],
+    ]);
+    for (const e of eventos) {
+      expect(e).toMatchObject({ result: 'failure', targetType: 'exclusion', actorId: analista.userId });
+      expect(e.requestId).toBeTruthy();
+      expect(Object.keys(e.metadata as object)).toEqual(['reason']);
+    }
+    expect(JSON.stringify(eventos)).not.toMatch(/no-es-uuid|script|x\.example|no es dominio|localhost|rrrr/);
   });
 });

@@ -88,6 +88,29 @@ async function auditRejection(
   }).catch(() => req.log.error('no se pudo registrar la auditoría del indicador'));
 }
 
+type ExclusionAction = (typeof AuditAction)['exclusionCreate' | 'exclusionDelete'];
+
+/**
+ * Audita una exclusión rechazada (400, 404 o 409) con el mismo patrón: solo el motivo y, si es
+ * un UUID ya validado, el ID. Nunca el dominio ni el motivo que mandó el cliente.
+ */
+async function auditExclusionRejection(
+  db: Db,
+  req: Request,
+  action: ExclusionAction,
+  entry: { reason: 'invalid_body' | 'invalid_domain' | 'already_excluded' | 'not_found'; exclusionId?: string },
+): Promise<void> {
+  await recordAudit(db, {
+    action,
+    result: 'failure',
+    requestId: String(req.id),
+    actorId: req.auth!.user.id,
+    targetType: 'exclusion',
+    ...(entry.exclusionId ? { targetId: entry.exclusionId } : {}),
+    metadata: { reason: entry.reason },
+  }).catch(() => req.log.error('no se pudo registrar la auditoría de la exclusión'));
+}
+
 /** Host de un indicador ya guardado (para volver a comprobar la exclusión al confirmar). */
 function storedHost(type: IndicatorType, value: string): string | null {
   const r = normalizeIndicator(type, value);
@@ -254,15 +277,19 @@ export function createIndicatorsRouter({ db, config }: IndicatorsDeps) {
   });
 
   router.post('/exclusions', analista, async (req, res) => {
+    // Los rechazos se auditan antes de responder, sin el dominio ni el motivo que mandó el cliente.
+    if (!CreateExclusionBody.safeParse(req.body).success) await auditExclusionRejection(db, req, AuditAction.exclusionCreate, { reason: 'invalid_body' });
     const body = parseBody(CreateExclusionBody, req, res);
     if (!body) return;
     const domain = normalizeHost(body.domain);
     if (!domain) {
+      await auditExclusionRejection(db, req, AuditAction.exclusionCreate, { reason: 'invalid_domain' });
       sendError(req, res, 400, 'validation_error', 'Revisa los datos enviados.', [{ field: 'domain', message: INVALID_VALUE.domain }]);
       return;
     }
     // Ya cubierto (el mismo dominio o uno padre, en la tabla o en la configuración): 409.
     if (await isExcluded(db, config.INSTITUTIONAL_DOMAINS, domain)) {
+      await auditExclusionRejection(db, req, AuditAction.exclusionCreate, { reason: 'already_excluded' });
       sendError(req, res, 409, 'conflict', EXCLUSION_TAKEN);
       return;
     }
@@ -284,6 +311,7 @@ export function createIndicatorsRouter({ db, config }: IndicatorsDeps) {
     } catch (error) {
       // Otra petición lo excluyó al mismo tiempo.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        await auditExclusionRejection(db, req, AuditAction.exclusionCreate, { reason: 'already_excluded' });
         sendError(req, res, 409, 'conflict', EXCLUSION_TAKEN);
         return;
       }
@@ -293,6 +321,8 @@ export function createIndicatorsRouter({ db, config }: IndicatorsDeps) {
   });
 
   router.delete('/exclusions/:exclusionId', analista, async (req, res) => {
+    // ID mal formado: 404 auditado sin targetId (no se guarda lo que mandó el cliente).
+    if (!isUuid(req.params.exclusionId)) await auditExclusionRejection(db, req, AuditAction.exclusionDelete, { reason: 'not_found' });
     const id = uuidParam(req, res, 'exclusionId', 'La exclusión no existe.');
     if (!id) return;
     const actor = req.auth!.user;
@@ -310,6 +340,7 @@ export function createIndicatorsRouter({ db, config }: IndicatorsDeps) {
       return true;
     });
     if (!borrada) {
+      await auditExclusionRejection(db, req, AuditAction.exclusionDelete, { reason: 'not_found', exclusionId: id });
       sendError(req, res, 404, 'not_found', 'La exclusión no existe.');
       return;
     }
