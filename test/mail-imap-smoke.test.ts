@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { ImapFlow } from 'imapflow';
 import { describe, expect, it } from 'vitest';
 import { openImapProvider } from '../src/mail/imap.js';
 import { MailUnavailableError } from '../src/mail/provider.js';
@@ -12,6 +14,7 @@ const port = Number(process.env.IMAP_LAB_PORT || 143);
 const password = process.env.IMAP_LAB_PASSWORD ?? '';
 const BUZON = 'teacher@lab.example';
 const LAB = new URL('./fixtures/lab/', import.meta.url);
+const CRLF = String.fromCharCode(13, 10);
 
 describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de humo)', () => {
   it('lista INBOX de un buzón sembrado, con UIDVALIDITY estable, y baja el crudo igual al .eml', async () => {
@@ -46,6 +49,38 @@ describe.skipIf(!activa)('proveedor IMAP contra el laboratorio real (prueba de h
       expect(cuarentena.uidValidity).toBeGreaterThan(0);
     } finally {
       await mail.close();
+    }
+  });
+
+  it('append inserta en INBOX con UID y UIDVALIDITY coherentes y se baja igual byte a byte (sin tocar los sembrados)', async () => {
+    const messageId = `<append-smoke-${randomUUID()}@lab.example>`;
+    const raw = Buffer.from(
+      ['From: Prueba <smoke@lab.example>', `To: ${BUZON}`, 'Subject: Prueba de APPEND', `Message-ID: ${messageId}`, 'Date: Mon, 23 Nov 2026 12:00:00 -0600', '', 'Mensaje sintético.', ''].join(CRLF),
+    );
+    const mail = await openImapProvider({ host, port, user: BUZON, password });
+    try {
+      const antes = await mail.listFolder('inbox');
+      const r = await mail.append('inbox', raw, new Date('2026-11-23T18:00:00Z'));
+      expect(r.uid).toBeGreaterThan(0);
+      expect(r.uidValidity).toBe(antes.uidValidity);
+      const despues = await mail.listFolder('inbox');
+      expect(despues.messages.find((m) => m.uid === r.uid)?.messageId).toBe(messageId);
+      expect(despues.messages).toHaveLength(antes.messages.length + 1);
+      const bajado = await mail.fetchRaw('inbox', r.uid, 1024 * 1024);
+      expect(bajado && Buffer.compare(bajado, raw)).toBe(0);
+    } finally {
+      await mail.close();
+      // Limpieza con imapflow directo: el proveedor no borra (eso no es de este módulo).
+      const imap = new ImapFlow({ host, port, secure: false, doSTARTTLS: false, auth: { user: BUZON, pass: password }, logger: false });
+      await imap.connect();
+      const lock = await imap.getMailboxLock('INBOX');
+      try {
+        const uids = await imap.search({ header: { 'message-id': messageId } }, { uid: true });
+        if (uids && uids.length > 0) await imap.messageDelete(uids, { uid: true });
+      } finally {
+        lock.release();
+        await imap.logout();
+      }
     }
   });
 

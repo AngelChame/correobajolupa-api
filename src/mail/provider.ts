@@ -1,6 +1,6 @@
 /**
  * Interfaz de correo (D-007): esquema neutral para que la sincronización no dependa de IMAP.
- * Hoy solo lo que necesita sincronizar (listar y bajar); APPEND y MOVE llegan en el paso 4 y en M7.
+ * Listar, bajar e insertar (APPEND, para la entrega simulada); MOVE llega en M7.
  */
 
 /** Carpeta neutral: inbox = INBOX; quarantine = la carpeta de cuarentena del proveedor. */
@@ -23,11 +23,19 @@ export type FolderListing = {
   messages: FolderMessage[];
 };
 
+export type AppendResult = { uid: number; uidValidity: number };
+
 export interface MailProvider {
   /** Lista los mensajes de una carpeta (sin cuerpos). */
   listFolder(location: MailLocation): Promise<FolderListing>;
   /** Baja el mensaje crudo. null si pasa de maxBytes o ya no existe. */
   fetchRaw(location: MailLocation, uid: number, maxBytes: number): Promise<Buffer | null>;
+  /**
+   * Inserta un mensaje crudo en la carpeta (IMAP APPEND, D-006) con la fecha interna dada y
+   * devuelve su UID y el UIDVALIDITY de la carpeta tal como los informa el servidor (UIDPLUS).
+   * Si el servidor no los devuelve, falla con MailUnavailableError: nunca se adivina el UID.
+   */
+  append(location: MailLocation, raw: Buffer, internalDate: Date | null): Promise<AppendResult>;
   close(): Promise<void>;
 }
 

@@ -4,7 +4,7 @@ import { createDb } from '../../src/db/client.js';
 import { dedupeKey } from '../../src/lab/index-message.js';
 import { MailboxNotFoundError, MailUnavailableError, SyncInProgressError, SyncTimeoutError, syncMailbox, type SyncDeps } from '../../src/lab/sync.js';
 import { createLogger } from '../../src/logger.js';
-import type { FolderListing, MailLocation, MailProvider } from '../../src/mail/provider.js';
+import { FakeServer } from './fake-mail.js';
 import { testDatabaseUrl } from './test-db.js';
 
 // Sincronización de un buzón del laboratorio contra PostgreSQL real, con un proveedor de correo
@@ -16,72 +16,6 @@ const INST = ['universidad-ejemplo.example'];
 type LabMessage = { id: string; file: string; mailbox: string; messageId: string; expectedRules: string[] };
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', LAB), 'utf8')) as { messages: LabMessage[] };
 const rawOf = (file: string) => readFileSync(new URL(file, LAB));
-
-// ---- Proveedor falso ----
-
-type Stored = { uid: number; raw: Buffer };
-type Folder = { uidValidity: number; nextUid: number; messages: Stored[] };
-
-const messageIdOf = (raw: Buffer) => /^Message-ID:\s*(\S+)\s*$/im.exec(raw.subarray(0, raw.indexOf('\r\n\r\n')).toString('utf8'))?.[1] ?? null;
-
-class FakeServer {
-  folders: Record<MailLocation, Folder> = {
-    inbox: { uidValidity: 1795424849, nextUid: 1, messages: [] },
-    quarantine: { uidValidity: 1795424850, nextUid: 1, messages: [] },
-  };
-  delayMs = 0;
-  failOpen = false;
-  failList = false;
-  opened = 0;
-
-  add(raw: Buffer, location: MailLocation = 'inbox'): number {
-    const f = this.folders[location];
-    const uid = f.nextUid++;
-    f.messages.push({ uid, raw });
-    return uid;
-  }
-  find(messageId: string): { location: MailLocation; stored: Stored } {
-    for (const location of ['inbox', 'quarantine'] as const) {
-      const stored = this.folders[location].messages.find((m) => messageIdOf(m.raw) === messageId);
-      if (stored) return { location, stored };
-    }
-    throw new Error('no está');
-  }
-  /** Como UID MOVE: sale de su carpeta y entra a la otra con un UID nuevo. */
-  move(messageId: string, to: MailLocation): number {
-    const { location, stored } = this.find(messageId);
-    this.folders[location].messages = this.folders[location].messages.filter((m) => m !== stored);
-    return this.add(stored.raw, to);
-  }
-  remove(messageId: string): void {
-    const { location, stored } = this.find(messageId);
-    this.folders[location].messages = this.folders[location].messages.filter((m) => m !== stored);
-  }
-  /** Nuevo UIDVALIDITY: el servidor renumera todos los UID de la carpeta. */
-  resetUidValidity(location: MailLocation, uidValidity: number): void {
-    const f = this.folders[location];
-    f.uidValidity = uidValidity;
-    f.nextUid = 1000;
-    f.messages = f.messages.map((m) => ({ uid: f.nextUid++, raw: m.raw }));
-  }
-  provider(): MailProvider {
-    const server = this;
-    const wait = () => new Promise((r) => setTimeout(r, server.delayMs));
-    return {
-      async listFolder(location): Promise<FolderListing> {
-        if (server.failList) throw new MailUnavailableError();
-        const f = server.folders[location];
-        return { uidValidity: f.uidValidity, messages: f.messages.map((m) => ({ uid: m.uid, messageId: messageIdOf(m.raw), size: m.raw.length })) };
-      },
-      async fetchRaw(location, uid, maxBytes) {
-        await wait();
-        const m = server.folders[location].messages.find((x) => x.uid === uid);
-        return m && m.raw.length <= maxBytes ? Buffer.from(m.raw) : null;
-      },
-      async close() {},
-    };
-  }
-}
 
 // ---- Utilidades ----
 
@@ -95,11 +29,7 @@ function deps(server: FakeServer, extra: Partial<SyncDeps> = {}): SyncDeps {
     maxEmlBytes: 10 * 1024 * 1024,
     maxMessages: 500,
     budgetMs: 20_000,
-    openProvider: async () => {
-      if (server.failOpen) throw new MailUnavailableError();
-      server.opened++;
-      return server.provider();
-    },
+    openProvider: () => server.open(),
     ...extra,
   };
 }

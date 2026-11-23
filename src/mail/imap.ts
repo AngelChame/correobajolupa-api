@@ -1,5 +1,5 @@
 import { ImapFlow } from 'imapflow';
-import { MailUnavailableError, type FolderListing, type FolderMessage, type MailLocation, type MailProvider } from './provider.js';
+import { MailUnavailableError, type AppendResult, type FolderListing, type FolderMessage, type MailLocation, type MailProvider } from './provider.js';
 
 /** Nombre de cada carpeta neutral en el Dovecot del laboratorio (docker/imap/dovecot.conf). */
 const FOLDERS: Record<MailLocation, string> = { inbox: 'INBOX', quarantine: 'Cuarentena' };
@@ -70,6 +70,20 @@ class ImapProvider implements MailProvider {
       if (!full || !full.source || full.source.length > maxBytes) return null;
       return full.source;
     });
+  }
+
+  async append(location: MailLocation, raw: Buffer, internalDate: Date | null): Promise<AppendResult> {
+    let result: Awaited<ReturnType<ImapFlow['append']>>;
+    try {
+      result = await this.imap.append(FOLDERS[location], raw, [], internalDate ?? undefined);
+    } catch {
+      throw new MailUnavailableError();
+    }
+    // Sin APPENDUID (UIDPLUS) no se sabe qué UID quedó: no se adivina (D-006).
+    const uid = result ? result.uid : undefined;
+    const uidValidity = result ? result.uidValidity : undefined;
+    if (!uid || !uidValidity) throw new MailUnavailableError('el servidor no devolvió el UID del mensaje insertado');
+    return { uid, uidValidity: Number(uidValidity) };
   }
 
   async close(): Promise<void> {
