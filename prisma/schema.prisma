@@ -78,6 +78,16 @@ enum RuleId {
   @@map("rule_id")
 }
 
+// Mismos valores que ScanStatus en src/contract/schemas/attachments.ts (D-018).
+enum ScanStatus {
+  not_detected
+  detected
+  unsupported
+  error
+
+  @@map("scan_status")
+}
+
 /// Cuenta de la plataforma. El email se guarda siempre en minúsculas
 /// (normalizeEmail en src/db/email.ts y un CHECK en la migración), así
 /// el índice único impide duplicados que solo cambian en mayúsculas.
@@ -184,8 +194,9 @@ model Report {
   /// Código corto del último error (p. ej. "parse_timeout"). Nunca el mensaje ni contenido del correo.
   lastErrorCode String?   @map("last_error_code") @db.VarChar(64)
 
-  findings Finding[]
-  links    ReportLink[]
+  findings    Finding[]
+  links       ReportLink[]
+  attachments Attachment[]
 
   @@index([status, lockedUntil])
   @@index([userId, createdAt])
@@ -228,4 +239,33 @@ model ReportLink {
 
   @@unique([reportId, position])
   @@map("report_links")
+}
+
+/// Adjunto de un reporte (M2). Solo metadatos: los bytes NO se guardan en ningún lado; el worker
+/// los extrae del .eml en memoria, calcula el SHA-256 y los manda a ClamAV. Nunca se ejecutan
+/// ni se descomprimen (D-018).
+model Attachment {
+  id           String     @id @default(uuid()) @db.Uuid
+  reportId     String     @map("report_id") @db.Uuid
+  report       Report     @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// Orden en el correo, desde 0.
+  position     Int
+  /// Nombre saneado (sin caracteres de control ni de dirección de texto). Texto hostil: se escapa
+  /// siempre, nunca se usa como ruta y nunca va a los registros.
+  fileName     String?    @map("file_name") @db.VarChar(255)
+  /// Content-Type declarado en el correo.
+  declaredType String?    @map("declared_type") @db.VarChar(255)
+  /// Tipo detectado por los primeros bytes (por ejemplo "application/pdf").
+  detectedType String?    @map("detected_type") @db.VarChar(64)
+  sizeBytes    Int        @map("size_bytes")
+  /// SHA-256 en hexadecimal del contenido decodificado.
+  sha256       String     @db.Char(64)
+  scanStatus   ScanStatus @map("scan_status")
+  /// Firma detectada, o motivo de unsupported o error.
+  scanDetail   String?    @map("scan_detail") @db.VarChar(200)
+  /// Cuándo respondió ClamAV; null si no se llegó a escanear.
+  scannedAt    DateTime?  @map("scanned_at") @db.Timestamptz(3)
+
+  @@unique([reportId, position])
+  @@map("attachments")
 }
