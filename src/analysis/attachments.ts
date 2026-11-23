@@ -59,6 +59,77 @@ export function familyOfDetected(detectedType: string | null): FileFamily | null
   return detectedType ? (FAMILY_OF_TYPE.get(detectedType) ?? null) : null;
 }
 
+/**
+ * Familias que una extensión hace esperar (R7). Las que no están aquí no se comparan. Ojo con los
+ * falsos positivos: docx, xlsx, jar, apk... son ZIP legítimos; doc, xls, msi y msg son OLE2, y un
+ * .doc a veces es RTF.
+ */
+const EXTENSION_FAMILIES: Readonly<Record<string, readonly FileFamily[]>> = {
+  exe: ['executable'],
+  dll: ['executable'],
+  scr: ['executable'],
+  cpl: ['executable'],
+  sys: ['executable'],
+  pdf: ['pdf'],
+  ...Object.fromEntries(['zip', 'docx', 'docm', 'xlsx', 'xlsm', 'pptx', 'pptm', 'odt', 'ods', 'odp', 'jar', 'apk', 'epub'].map((e) => [e, ['zip']])),
+  doc: ['ole2', 'rtf'],
+  ...Object.fromEntries(['xls', 'ppt', 'msg', 'msi'].map((e) => [e, ['ole2']])),
+  rar: ['rar'],
+  '7z': ['7z'],
+  gz: ['gzip'],
+  tgz: ['gzip'],
+  ...Object.fromEntries(['png', 'jpg', 'jpeg', 'gif'].map((e) => [e, ['image']])),
+  rtf: ['rtf'],
+  ...Object.fromEntries(['txt', 'csv', 'log'].map((e) => [e, ['text']])),
+};
+
+export function familiesOfExtension(extension: string | null): readonly FileFamily[] | null {
+  return extension ? (EXTENSION_FAMILIES[extension] ?? null) : null;
+}
+
+/** Familias que un Content-Type declarado hace esperar; null si es genérico o desconocido (no se compara). */
+const DECLARED_FAMILIES: Readonly<Record<string, readonly FileFamily[]>> = {
+  'application/pdf': ['pdf'],
+  'application/zip': ['zip'],
+  'application/x-zip-compressed': ['zip'],
+  'application/x-zip': ['zip'],
+  'application/java-archive': ['zip'],
+  'application/vnd.android.package-archive': ['zip'],
+  'application/epub+zip': ['zip'],
+  'application/msword': ['ole2', 'rtf'],
+  // Windows manda los .csv como application/vnd.ms-excel: el texto no dispara.
+  'application/vnd.ms-excel': ['ole2', 'text'],
+  'application/vnd.ms-powerpoint': ['ole2'],
+  'application/vnd.ms-outlook': ['ole2'],
+  'application/x-msi': ['ole2'],
+  'application/vnd.rar': ['rar'],
+  'application/x-rar-compressed': ['rar'],
+  'application/x-7z-compressed': ['7z'],
+  'application/gzip': ['gzip'],
+  'application/x-gzip': ['gzip'],
+  'image/png': ['image'],
+  'image/jpeg': ['image'],
+  'image/jpg': ['image'],
+  'image/pjpeg': ['image'],
+  'image/gif': ['image'],
+  'application/rtf': ['rtf'],
+  'text/rtf': ['rtf'],
+  'text/plain': ['text'],
+  'text/csv': ['text'],
+  'text/html': ['text'],
+  'application/x-msdownload': ['executable'],
+  'application/x-dosexec': ['executable'],
+  'application/vnd.microsoft.portable-executable': ['executable'],
+};
+
+export function familiesOfDeclared(declaredType: string | null): readonly FileFamily[] | null {
+  if (!declaredType) return null;
+  const type = declaredType.split(';')[0]!.trim();
+  if (type.startsWith('application/vnd.openxmlformats-officedocument.') || type.startsWith('application/vnd.oasis.opendocument.')) return ['zip'];
+  if (/^application\/vnd\.ms-[a-z]+\.[a-z.]*macroenabled\.12$/.test(type)) return ['zip'];
+  return DECLARED_FAMILIES[type] ?? null;
+}
+
 /** ¿El inicio del contenido es texto UTF-8 sin bytes de control (salvo tab, saltos y avance de página)? */
 function looksLikeText(content: Buffer): boolean {
   const probe = content.subarray(0, TEXT_PROBE_BYTES);

@@ -52,7 +52,7 @@ describe('worker: queued → analizado', () => {
       findingsCount: 3,
       subject: 'URGENTE: cuenta suspendida',
       fromAddress: 'soporte@banco-ejemplo.example',
-      rulesVersion: 'm1-2026.11',
+      rulesVersion: 'm2-2026.11',
       hasHtml: true,
     });
     expect(detalle.analyzedAt).not.toBeNull();

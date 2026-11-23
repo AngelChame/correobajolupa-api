@@ -1,11 +1,12 @@
 import { domainToUnicode } from 'node:url';
 import type { Priority } from '../generated/prisma/enums.js';
+import { familiesOfDeclared, familiesOfExtension, familyOfDetected } from './attachments.js';
 import { ALLOWED_SCHEMES, isIpHost } from './links.js';
 import { imitatedDomain } from './lookalike.js';
-import type { AnalyzedLink, RawEvidence, RawFinding } from './types.js';
+import type { AnalyzedAttachment, AnalyzedLink, RawEvidence, RawFinding } from './types.js';
 
 /** Versión de las reglas: se guarda en cada hallazgo y en el reporte. Sube al cambiar una regla. */
-export const RULES_VERSION = 'm1-2026.11';
+export const RULES_VERSION = 'm2-2026.11';
 
 /** Evidencias por hallazgo como mucho (un correo con 200 enlaces malos no genera 200). */
 const MAX_EVIDENCE = 10;
@@ -43,7 +44,35 @@ const RULES: Record<RuleId, { name: string; summary: string; weight: number }> =
     summary: 'Un enlace usa un esquema que puede ejecutar código o incrustar contenido (javascript:, data:...).',
     weight: 3,
   },
+  R7: {
+    name: 'Doble extensión o tipo de adjunto inconsistente',
+    summary: 'Un adjunto disfraza su tipo: doble extensión, caracteres que invierten el nombre o un contenido que no coincide con su extensión o su tipo declarado.',
+    // Peso provisional (decisión abierta nº 3).
+    weight: 3,
+  },
 };
+
+/** Última extensión que ejecuta código al abrir el archivo en Windows (R7, doble extensión). */
+const EXECUTABLE_EXTENSIONS = new Set(['exe', 'scr', 'com', 'pif', 'bat', 'cmd', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'wsh', 'ps1', 'hta', 'jar', 'msi', 'lnk', 'cpl']);
+/** Penúltima extensión que hace pasar el archivo por documento o imagen. */
+const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'gif']);
+
+/**
+ * ¿El adjunto disfraza su tipo? (R7). name: doble extensión o caracteres de dirección de texto.
+ * content: los bytes tienen una firma conocida que contradice la extensión o el tipo declarado
+ * (sin firma conocida no hay contradicción que mostrar; un octet-stream genérico no se compara).
+ */
+function disguised(a: AnalyzedAttachment): { name: boolean; content: boolean } {
+  const name =
+    a.hasBidiControls ||
+    (a.extension !== null && a.previousExtension !== null && EXECUTABLE_EXTENSIONS.has(a.extension) && DOCUMENT_EXTENSIONS.has(a.previousExtension));
+  const detected = familyOfDetected(a.detectedType);
+  const byExtension = familiesOfExtension(a.extension);
+  const byDeclared = familiesOfDeclared(a.declaredType);
+  const content =
+    detected !== null && ((byExtension !== null && !byExtension.includes(detected)) || (byDeclared !== null && !byDeclared.includes(detected)));
+  return { name, content };
+}
 
 /** Dominio de una dirección de correo, en minúsculas. */
 export function emailDomain(address: string): string | null {
@@ -74,12 +103,13 @@ export type RuleInput = {
   fromAddress: string | null;
   replyTo: readonly string[];
   links: readonly AnalyzedLink[];
+  attachments?: readonly AnalyzedAttachment[];
   institutionalDomains: readonly string[];
 };
 
-/** Aplica R1 a R6. Ninguna regla prueba phishing por sí sola: cada hallazgo es una señal con evidencia. */
-export function applyRules({ fromAddress, replyTo, links, institutionalDomains }: RuleInput): RawFinding[] {
-  const evidence: Record<RuleId, RawEvidence[]> = { R1: [], R2: [], R3: [], R4: [], R5: [], R6: [] };
+/** Aplica R1 a R7. Ninguna regla prueba phishing por sí sola: cada hallazgo es una señal con evidencia. */
+export function applyRules({ fromAddress, replyTo, links, attachments = [], institutionalDomains }: RuleInput): RawFinding[] {
+  const evidence: Record<RuleId, RawEvidence[]> = { R1: [], R2: [], R3: [], R4: [], R5: [], R6: [], R7: [] };
   const add = (rule: RuleId, ...items: RawEvidence[]) => {
     if (evidence[rule].length < MAX_EVIDENCE) evidence[rule].push(...items);
   };
@@ -133,12 +163,24 @@ export function applyRules({ fromAddress, replyTo, links, institutionalDomains }
     }
   }
 
+  // R7: adjuntos con el tipo disfrazado. El nombre ya viene saneado y es texto, no un enlace.
+  for (const a of attachments) {
+    const { name, content } = disguised(a);
+    if (!name && !content) continue;
+    const items: RawEvidence[] = [
+      { label: 'Archivo adjunto', value: a.fileName ?? '(sin nombre)', kind: 'text' },
+      { label: 'Tipo declarado', value: a.declaredType ?? '(sin tipo)', kind: 'text' },
+    ];
+    if (content && a.detectedType) items.push({ label: 'Tipo detectado', value: a.detectedType, kind: 'text' });
+    add('R7', ...items);
+  }
+
   return (Object.keys(RULES) as RuleId[])
     .filter((id) => evidence[id].length > 0)
     .map((id) => ({ ruleId: id, ruleName: RULES[id].name, summary: RULES[id].summary, evidence: evidence[id] }));
 }
 
-/** Prioridad provisional (pesos R1=1; R2-R5=2; R6=3): < 2 low, 2-3 medium, ≥ 4 high. */
+/** Prioridad provisional (pesos R1=1; R2-R5=2; R6 y R7=3): < 2 low, 2-3 medium, ≥ 4 high. */
 export function priorityOf(findings: readonly RawFinding[]): Priority {
   const total = findings.reduce((sum, f) => sum + RULES[f.ruleId].weight, 0);
   return total >= 4 ? 'high' : total >= 2 ? 'medium' : 'low';

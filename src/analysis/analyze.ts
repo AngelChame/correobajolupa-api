@@ -74,7 +74,7 @@ function finish(parsed: ParsedMail, parseError: boolean, missingHeaders: boolean
   // Si solo se leyeron encabezados (tooDeep o el parseo completo falló), no hay adjuntos.
   const { attachments, ignored } = withBody ? extractAttachments(parsed.attachments) : { attachments: [], ignored: 0 };
 
-  const findings = applyRules({ fromAddress, replyTo, links, institutionalDomains: options.institutionalDomains });
+  const findings = applyRules({ fromAddress, replyTo, links, attachments, institutionalDomains: options.institutionalDomains });
   const limitedReason = parseError ? 'parse_error' : lacksHeaders ? 'missing_headers' : null;
   return {
     subject: recortar(parsed.subject, MAX_SUBJECT),

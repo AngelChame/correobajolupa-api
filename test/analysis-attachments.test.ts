@@ -138,3 +138,60 @@ describe('analyze(): adjuntos', () => {
     expect((await analyze(Buffer.from('Estimado usuario: hola'), 'paste', INST)).attachments).toEqual([]);
   });
 });
+
+describe('regla R7', () => {
+  const PE = bytes(0x4d, 0x5a, 0x90, 0x00);
+  const ZIP = Buffer.from('PK\x03\x04 sintético', 'latin1');
+  const OLE2 = bytes(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00);
+  const PNG = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00);
+  const r7 = async (partes: Parameters<typeof correoConAdjuntos>[0]) => {
+    const r = await analyze(correoConAdjuntos(partes), 'eml', INST);
+    return r.findings.find((f) => f.ruleId === 'R7');
+  };
+
+  it.each([
+    ['.docx con firma ZIP', { name: 'tarea.docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', content: ZIP }],
+    ['.xlsx con firma ZIP y tipo genérico', { name: 'notas.xlsx', type: 'application/octet-stream', content: ZIP }],
+    ['.pdf con %PDF', { name: 'constancia.pdf', type: 'application/pdf', content: Buffer.from('%PDF-1.5\n') }],
+    ['.png con firma PNG', { name: 'logo.png', type: 'image/png', content: PNG }],
+    ['.jpg con firma PNG (misma familia)', { name: 'foto.jpg', type: 'image/jpeg', content: PNG }],
+    ['application/octet-stream sin extensión conocida', { name: 'datos.bin', type: 'application/octet-stream', content: PE }],
+    ['.txt de texto', { name: 'leeme.txt', type: 'text/plain', content: Buffer.from('Hola.\n') }],
+    ['.txt con bytes sin firma (latin-1)', { name: 'viejo.txt', type: 'text/plain', content: Buffer.from('ma\xf1ana', 'latin1') }],
+    ['.csv como application/vnd.ms-excel', { name: 'lista.csv', type: 'application/vnd.ms-excel', content: Buffer.from('a,b\n1,2\n') }],
+    ['.doc OLE2', { name: 'oficio.doc', type: 'application/msword', content: OLE2 }],
+    ['.exe sin disfraz', { name: 'instalador.exe', type: 'application/x-msdownload', content: PE }],
+    ['nombre con punto pero sin doble extensión', { name: 'v1.2 informe.pdf', type: 'application/pdf', content: Buffer.from('%PDF-1.5\n') }],
+  ])('legítimo: %s no dispara', async (_n, parte) => {
+    expect(await r7([parte])).toBeUndefined();
+  });
+
+  it('doble extensión: evidencia con el nombre y el tipo declarado', async () => {
+    const f = await r7([{ name: 'factura-0042.pdf.exe', type: 'application/octet-stream', content: PE }]);
+    expect(f?.evidence).toEqual([
+      { label: 'Archivo adjunto', value: 'factura-0042.pdf.exe', kind: 'text' },
+      { label: 'Tipo declarado', value: 'application/octet-stream', kind: 'text' },
+    ]);
+  });
+
+  it('un nombre con U+202E dispara aunque no tenga doble extensión', async () => {
+    const f = await r7([{ name: 'factura‮fdp.scr', type: 'application/octet-stream', content: Buffer.from('sin firma') }]);
+    expect(f?.evidence[0]).toEqual({ label: 'Archivo adjunto', value: 'factura[U+202E]fdp.scr', kind: 'text' });
+  });
+
+  it('contenido que contradice la extensión o el tipo declarado: agrega el tipo detectado', async () => {
+    const porExtension = await r7([{ name: 'estado-de-cuenta.pdf', type: 'application/zip', content: ZIP }]);
+    expect(porExtension?.evidence).toContainEqual({ label: 'Tipo detectado', value: 'application/zip', kind: 'text' });
+    const porTipo = await r7([{ name: 'documento', type: 'application/pdf', content: PE }]);
+    expect(porTipo?.evidence).toContainEqual({ label: 'Tipo detectado', value: 'application/x-msdownload', kind: 'text' });
+    const imagenEjecutable = await r7([{ name: 'foto.png', type: 'image/png', content: PE }]);
+    expect(imagenEjecutable).toBeDefined();
+  });
+
+  it('R7 sola deja la prioridad en medium (peso provisional 3)', async () => {
+    const r = await analyze(correoConAdjuntos([{ name: 'factura.pdf.exe', type: 'application/octet-stream', content: PE }]), 'eml', INST);
+    expect(r.findings.map((f) => f.ruleId)).toEqual(['R7']);
+    expect(r.priority).toBe('medium');
+    expect(r.rulesVersion).toBe('m2-2026.11');
+  });
+});
