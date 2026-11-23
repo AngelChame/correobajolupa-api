@@ -178,6 +178,41 @@ Rutas (solo analista o administrador; el reportante recibe 403):
 
 **El modo real no depende del laboratorio (D-003, D-060):** sin `IMAP_LAB_PASSWORD`, con una de menos de 16 caracteres o con el contenedor `imap` caído, la API arranca igual y solo las rutas del laboratorio responden 503 con un mensaje fijo. Las variables están en [Variables de M4](#variables-de-m4-laboratorio-imap). Detalle técnico (Dovecot, siembra, sincronización, entrega simulada y pruebas de humo): [`docker/imap/README.md`](docker/imap/README.md). El conjunto sintético y su verdad de referencia: [`test/fixtures/README.md`](test/fixtures/README.md).
 
+## Indicadores, candidatos y lista de exclusión (M5)
+
+Un **indicador** es un dominio (o una IP), una URL, un SHA-256 o un remitente que sirve para buscar mensajes relacionados en el laboratorio. Una persona lo propone, un analista lo confirma o lo descarta, y con un indicador confirmado se obtienen los **mensajes candidatos** con la razón de cada coincidencia. **Sin puntuación y sin conclusiones:** compartir un dominio no confirma una campaña; decide una persona (D-019).
+
+| Ruta | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /indicators` | Todos | Propone un indicador. El reportante solo desde un reporte suyo (`reportId`); analista y administrador pueden omitirlo. 409 si ya existe uno igual sin descartar o si el dominio está en la lista de exclusión (P-11) |
+| `GET /indicators` | Todos | El reportante ve los que propuso; analista y administrador, todos. Filtros `status` y `type`; paginado |
+| `POST /indicators/{id}/confirm` y `/dismiss` | Analista, admin | Decide un indicador propuesto (409 si ya está decidido). Al confirmar se vuelve a mirar la lista de exclusión |
+| `GET /indicators/{id}/candidates` | Analista, admin | Candidatos de un indicador confirmado (409 si no lo está), paginados |
+| `GET`, `POST /exclusions` y `DELETE /exclusions/{id}` | Analista, admin | Lista de exclusión. Los dominios institucionales de `INSTITUTIONAL_DOMAINS` salen como solo lectura (`source: config`) |
+
+**Normalización al proponer.** El valor se guarda ya normalizado y la API solo lo devuelve desactivado (`displayValue`, D-017): dominio en minúsculas, punycode y sin punto final (una IPv4 tal cual; una IPv6 comprimida y entre corchetes); URL solo `http` o `https`, sin query, fragmento ni credenciales; SHA-256 en minúsculas; remitente en minúsculas con el dominio en punycode. Un valor inválido responde 400 con un mensaje fijo que no repite lo recibido.
+
+**Lista de exclusión.** Un dominio excluido cubre el dominio y sus subdominios con frontera de etiqueta (`portal.universidad-ejemplo.example` sí; `xuniversidad-ejemplo.example` no). Aplica al dominio de un `domain`, al host de una `url` y al dominio de un `sender`.
+
+**Coincidencia (exacta, sin subdominios, sin ventana de fecha, en INBOX y Cuarentena):**
+
+| Tipo | Se compara con | Ubicación |
+| --- | --- | --- |
+| `domain` | Host de un enlace (nunca su texto visible); dominio del remitente; dominio de un Reply-To | `link`, `from`, `reply_to` |
+| `url` | URL normalizada del enlace | `link` |
+| `sha256` | SHA-256 de los adjuntos | `attachment` |
+| `sender` | Dirección del remitente | `from` |
+
+Cada candidato trae el resumen del mensaje y una razón por cada ubicación que coincide, con el valor desactivado. Orden: más razones primero, luego la fecha del mensaje (las vacías al final) y el id.
+
+**Auditoría.** `indicator.propose`, `indicator.confirm`, `indicator.dismiss`, `exclusion.create` y `exclusion.delete`, también los rechazos (404, 409 y, en exclusiones, 400) con un motivo en `metadata.reason`. Solo IDs, el tipo y el motivo: nunca el valor del indicador, la nota, el dominio excluido ni lo que mandó el cliente.
+
+**Limitaciones conocidas:**
+
+- Remitente y Reply-To se comparan con `lower()` sin índice: esas búsquedas recorren `indexed_messages`. Con las decenas de mensajes del laboratorio no se nota; con miles haría falta un índice de expresión o columnas normalizadas.
+- M4 guarda remitente y Reply-To tal como los entrega el lector de correo: si un remitente trajera el dominio en Unicode en vez de punycode, no coincidiría con un indicador (que se guarda en punycode).
+- Los candidatos se miden con el conjunto sintético del laboratorio ([`test/fixtures/lab/manifest.json`](test/fixtures/lab/manifest.json)); `test/integration/candidates.test.ts` compara cada indicador con su verdad de referencia.
+
 ## Pila completa con el front
 
 El front (repo de Cesar) se construye desde una carpeta al lado de esta (D-031):
