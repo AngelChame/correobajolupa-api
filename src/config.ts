@@ -36,6 +36,9 @@ const listaDeDominios = z.preprocess(
 
 const MiB = 1024 * 1024;
 
+/** Nombre de host o IPv4 (sin esquema, puerto ni ruta). */
+const NOMBRE_DE_HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i;
+
 /** Variables de entorno que la API necesita hoy. Se agregan conforme llegan los módulos. */
 const Env = z
   .object({
@@ -90,6 +93,17 @@ const Env = z
     // Cada cuántos minutos el worker borra reportes vencidos (7 días), sesiones vencidas y
     // carpetas huérfanas (D-012, D-034, D-038). Entre 1 minuto y 24 horas.
     CLEANUP_INTERVAL_MIN: enteroEntre(1, 1440, 60),
+
+    // --- M2: ClamAV (solo el worker lo usa). clamd por TCP dentro de la red de Docker. ---
+    CLAMAV_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('clamav')),
+    CLAMAV_PORT: enteroEntre(1, 65535, 3310),
+    // Tiempo máximo de un escaneo y de todos los del reporte juntos (ms). Lo que no alcance queda error.
+    CLAMAV_TIMEOUT_MS: enteroEntre(500, 120_000, 10_000),
+    CLAMAV_TOTAL_BUDGET_MS: enteroEntre(500, 1_800_000, 20_000),
+    // Adjuntos más grandes no se mandan (unsupported). Debe ser ≤ StreamMaxLength de clamd.
+    CLAMAV_MAX_SCAN_BYTES: enteroEntre(1, 100 * MiB, 10 * MiB),
+    // Se escanean los primeros N adjuntos (se registran hasta 50); los demás quedan unsupported.
+    MAX_ATTACHMENTS_SCANNED: enteroEntre(1, 50, 20),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
@@ -97,6 +111,15 @@ const Env = z
         code: 'custom',
         path: ['COOKIE_SECURE'],
         message: 'en producción la cookie de sesión debe ser Secure (COOKIE_SECURE=true)',
+      });
+    }
+    // Análisis (hasta la mitad del arriendo) + escaneo (hasta la otra mitad) caben en el arriendo:
+    // así otro worker no retoma un reporte que sigue escaneándose.
+    if (env.CLAMAV_TOTAL_BUDGET_MS > (env.JOB_LEASE_SECONDS * 1000) / 2) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CLAMAV_TOTAL_BUDGET_MS'],
+        message: 'no puede pasar de la mitad del arriendo (JOB_LEASE_SECONDS * 1000 / 2)',
       });
     }
     if (Boolean(env.FIRST_ADMIN_EMAIL) !== Boolean(env.FIRST_ADMIN_PASSWORD)) {

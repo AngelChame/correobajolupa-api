@@ -86,6 +86,24 @@ describe('loadConfig', () => {
     });
   });
 
+  it('aplica los valores por defecto de M2 (ClamAV) y valida host y presupuesto', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA })).toMatchObject({
+      CLAMAV_HOST: 'clamav',
+      CLAMAV_PORT: 3310,
+      CLAMAV_TIMEOUT_MS: 10_000,
+      CLAMAV_TOTAL_BUDGET_MS: 20_000,
+      CLAMAV_MAX_SCAN_BYTES: 10 * 1024 * 1024,
+      MAX_ATTACHMENTS_SCANNED: 20,
+    });
+    for (const valor of ['http://clamav', 'clamav:3310', 'a b', '-clamav']) {
+      expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, CLAMAV_HOST: valor }), valor).toContain('CLAMAV_HOST');
+    }
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, MAX_ATTACHMENTS_SCANNED: '51' })).toContain('MAX_ATTACHMENTS_SCANNED');
+    // Arriendo de 30 s: el escaneo puede usar como mucho 15 s.
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, JOB_LEASE_SECONDS: '30', CLAMAV_TOTAL_BUDGET_MS: '15000' }).CLAMAV_TOTAL_BUDGET_MS).toBe(15_000);
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, JOB_LEASE_SECONDS: '30' })).toContain('CLAMAV_TOTAL_BUDGET_MS');
+  });
+
   it('TRUST_PROXY_HOPS acepta solo un número de saltos, nunca true', () => {
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1);
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '' }).TRUST_PROXY_HOPS).toBe(0);
