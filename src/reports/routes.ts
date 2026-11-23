@@ -1,17 +1,41 @@
 import express, { type Request, type Response } from 'express';
+import { z } from 'zod';
 import { requireRole } from '../auth/roles.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
-import { PasteBody } from '../contract/schemas/reports.js';
+import { PageQuery } from '../contract/schemas/common.js';
+import { PasteBody, ReportStatus } from '../contract/schemas/reports.js';
 import { sendError } from '../http/errors.js';
-import { parseBody } from '../http/validate.js';
+import { parseBody, parseQuery } from '../http/validate.js';
 import type { ReportStorage } from '../storage/storage.js';
 import { createReport, ReportQuotaExceededError } from './create.js';
-import { toSummaryDto } from './dto.js';
+import { DETAIL_SELECT, SUMMARY_SELECT, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
 import { emlUpload } from './upload.js';
 
 export type ReportsDeps = { db: Db; config: Config; storage: ReportStorage };
+
+/** Consulta de GET /reports: la misma del contrato (paginación y filtro por estado). */
+const ListReportsQuery = PageQuery.extend({ status: ReportStatus.optional() });
+const ReportIdParam = z.uuid();
+
+/**
+ * Qué reportes puede ver o borrar quien pide: el reportante, solo los suyos; analista y
+ * administrador, todos. Se aplica en la misma consulta, así un reporte ajeno se ve igual que
+ * uno inexistente (404, no 403: no se revela que existe).
+ */
+function visibles(req: Request): { userId?: string } {
+  const { id, role } = req.auth!.user;
+  return role === 'reporter' ? { userId: id } : {};
+}
+
+/** reportId de la ruta si es un UUID; si no, responde 404 (un ID mal formado no existe). */
+function reportIdDe(req: Request, res: Response): string | undefined {
+  const id = req.params.reportId;
+  if (typeof id === 'string' && ReportIdParam.safeParse(id).success) return id;
+  sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+  return undefined;
+}
 
 /** Rutas de /reports (M1, paso 2). El análisis llega en el paso 3: aquí los reportes quedan en cola. */
 export function createReportsRouter({ db, config, storage }: ReportsDeps) {
@@ -44,6 +68,52 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
     const body = parseBody(PasteBody, req, res);
     if (!body) return;
     await crear(req, res, 'paste', Buffer.from(body.text, 'utf8'));
+  });
+
+  router.get('/', conSesion, async (req, res) => {
+    const query = parseQuery(ListReportsQuery, req, res);
+    if (!query) return;
+    const where = { ...visibles(req), ...(query.status ? { status: query.status } : {}) };
+    const [total, filas] = await Promise.all([
+      db.report.count({ where }),
+      db.report.findMany({
+        where,
+        // Más recientes primero; el id desempata, así la paginación no repite ni salta filas.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: { ...SUMMARY_SELECT, _count: { select: { findings: true } } },
+      }),
+    ]);
+    res.json({
+      items: filas.map((f) => toSummaryDto(f, f._count.findings)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    });
+  });
+
+  router.get('/:reportId', conSesion, async (req, res) => {
+    const id = reportIdDe(req, res);
+    if (!id) return;
+    const fila = await db.report.findFirst({ where: { id, ...visibles(req) }, select: DETAIL_SELECT });
+    if (!fila) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return;
+    }
+    res.json(toDetailDto(fila));
+  });
+
+  router.get('/:reportId/findings', conSesion, async (req, res) => {
+    const id = reportIdDe(req, res);
+    if (!id) return;
+    const reporte = await db.report.findFirst({ where: { id, ...visibles(req) }, select: { id: true } });
+    if (!reporte) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return;
+    }
+    const hallazgos = await db.finding.findMany({ where: { reportId: id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    res.json({ items: hallazgos.map(toFindingDto) });
   });
 
   return router;
