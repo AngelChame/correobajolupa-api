@@ -22,6 +22,10 @@ y `npm test` falla si el archivo commiteado no coincide con lo generado.
 
 ## Cambios
 
+- **0.2.2:** `GET /reports/{reportId}/html` responde **404 `not_found`** si el correo no trae parte HTML (antes
+  se documentaba como 409); el **409 `report_not_ready`** queda solo para un análisis que no ha terminado. Su CSP
+  documentada suma `frame-ancestors 'self'` y la ruta no envía `X-Frame-Options` (se incrusta en un iframe del
+  mismo origen, D-052). No cambia la forma de ningún dato.
 - **0.2.1:** `GET /reports` declara **400 `validation_error`** para paginación o filtro de estado inválidos,
   igual que `GET /users`. Solo agrega.
 - **0.2.0:** `PATCH /users/{userId}` puede responder **409 `conflict`** (un administrador no puede quitarse el

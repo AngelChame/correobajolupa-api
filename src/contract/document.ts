@@ -13,7 +13,7 @@ import {
 } from './schemas/reports.js';
 
 /** Sube con cada cambio del contrato; los cambios que rompen algo se avisan a Cesar. */
-export const CONTRACT_VERSION = '0.2.1';
+export const CONTRACT_VERSION = '0.2.2';
 
 const json = <T extends z.ZodType>(schema: T) => ({ 'application/json': { schema } });
 const error = (description: string) => ({ description, content: json(ErrorResponse) });
@@ -230,7 +230,7 @@ export function buildDocument() {
           tags: ['Reportes'],
           summary: 'HTML del correo ya saneado, para el `<iframe sandbox>`',
           description:
-            'Se sanea al pedirlo (D-035). Incrustar solo en `<iframe sandbox>` sin permisos; nunca `allow-scripts` junto con `allow-same-origin`.',
+            'Se sanea al pedirlo (D-035). Incrustar solo en `<iframe sandbox>` sin permisos; nunca `allow-scripts` junto con `allow-same-origin`. Esta ruta no envía `X-Frame-Options`: la CSP `frame-ancestors \'self\'` permite incrustarla solo desde el mismo origen (D-052).',
           requestParams: { path: reportId },
           responses: {
             200: {
@@ -238,15 +238,15 @@ export function buildDocument() {
               headers: z.object({
                 'content-security-policy': z
                   .string()
-                  .meta({ description: "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'" }),
+                  .meta({ description: "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'" }),
                 'x-content-type-options': z.string().meta({ description: 'nosniff' }),
                 'cache-control': z.string().meta({ description: 'no-store' }),
               }),
               content: { 'text/html': { schema: z.string() } },
             },
             401: e401,
-            404: e404,
-            409: error('El análisis aún no termina o el correo no trae HTML (`report_not_ready`).'),
+            404: error('No existe, no es del usuario o el correo no trae parte HTML (`not_found`).'),
+            409: error('El análisis aún no termina (`report_not_ready`).'),
           },
         },
       },

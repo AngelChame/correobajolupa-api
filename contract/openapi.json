@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CorreoBajoLupa API",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Contrato v0 de M0 (cuentas) y M1 (reportes y hallazgos). Los demás módulos se agregan al llegar a ellos.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces."
   },
   "servers": [
@@ -919,7 +919,7 @@
           "Reportes"
         ],
         "summary": "HTML del correo ya saneado, para el `<iframe sandbox>`",
-        "description": "Se sanea al pedirlo (D-035). Incrustar solo en `<iframe sandbox>` sin permisos; nunca `allow-scripts` junto con `allow-same-origin`.",
+        "description": "Se sanea al pedirlo (D-035). Incrustar solo en `<iframe sandbox>` sin permisos; nunca `allow-scripts` junto con `allow-same-origin`. Esta ruta no envía `X-Frame-Options`: la CSP `frame-ancestors 'self'` permite incrustarla solo desde el mismo origen (D-052).",
         "parameters": [
           {
             "in": "path",
@@ -938,10 +938,10 @@
             "headers": {
               "content-security-policy": {
                 "required": true,
-                "description": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+                "description": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'",
                 "schema": {
                   "type": "string",
-                  "description": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+                  "description": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"
                 }
               },
               "x-content-type-options": {
@@ -980,7 +980,7 @@
             }
           },
           "404": {
-            "description": "No existe o no es del usuario (`not_found`). Se usa 404 y no 403 para no revelar reportes ajenos.",
+            "description": "No existe, no es del usuario o el correo no trae parte HTML (`not_found`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -990,7 +990,7 @@
             }
           },
           "409": {
-            "description": "El análisis aún no termina o el correo no trae HTML (`report_not_ready`).",
+            "description": "El análisis aún no termina (`report_not_ready`).",
             "content": {
               "application/json": {
                 "schema": {
