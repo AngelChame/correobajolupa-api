@@ -1,0 +1,13 @@
+From: =?utf-8?B?RmFjdHVyYWNpw7Nu?= <facturacion@proveedor-pagos.example>
+To: Estudiante <student@lab.example>
+Subject: =?utf-8?B?RmFjdHVyYSBwZW5kaWVudGU6IGRlc2PDoXJndWVsYSBhcXXDrQ==?=
+Date: Wed, 18 Nov 2026 10:20:00 -0600
+Message-ID: <b3.factura-enlace@lab.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<p>Buen día:</p>
+<p>Su factura pendiente está disponible para descarga.</p>
+<p><a href="https://nube-compartida.example/descarga/987">Descargar factura</a></p>
+<p>Área de facturación</p>

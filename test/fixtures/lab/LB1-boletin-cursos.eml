@@ -1,0 +1,13 @@
+From: Cursos Ejemplo <hola@cursos-ejemplo.example>
+To: Estudiante <student@lab.example>
+Subject: Cursos de la semana
+Date: Sat, 21 Nov 2026 07:30:00 -0600
+Message-ID: <lb1.boletin-cursos@lab.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<p>Hola:</p>
+<p>Esta semana abrimos tres cursos cortos en línea: hojas de cálculo, redacción y estadística básica.</p>
+<p><a href="https://cursos-ejemplo.example/semana?origen=boletin">Ver los cursos de la semana</a></p>
+<p>Si ya no quieres recibir este boletín, responde a este correo.</p>

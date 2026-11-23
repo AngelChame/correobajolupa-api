@@ -1,0 +1,26 @@
+From: =?utf-8?B?RmFjdHVyYWNpw7Nu?= <facturacion@proveedor-pagos.example>
+To: Personal administrativo <staff@lab.example>
+Subject: Factura pendiente de pago
+Date: Wed, 18 Nov 2026 10:05:00 -0600
+Message-ID: <b2.factura@lab.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="=_lab_b2_mixed"
+
+--=_lab_b2_mixed
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Buen día:
+
+Le compartimos la factura 0042, pendiente de pago. Ábrala para revisar el monto.
+
+Área de facturación
+
+--=_lab_b2_mixed
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="factura-0042.pdf.exe"
+
+TVogQ09OVEVOSURPIFNJTlRFVElDTyBERUwgTEFCT1JBVE9SSU8sIE5PIEVKRUNVVEFCTEUK
+
+--=_lab_b2_mixed--
