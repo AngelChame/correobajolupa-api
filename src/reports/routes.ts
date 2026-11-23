@@ -13,6 +13,9 @@ import type { ReportStorage } from '../storage/storage.js';
 import { createReport, ReportQuotaExceededError } from './create.js';
 import { DETAIL_SELECT, SUMMARY_SELECT, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
 import { emlUpload } from './upload.js';
+import { readHtml, readText } from '../viewer/read.js';
+import { renderSafeHtml } from '../viewer/sanitize.js';
+import { defangText } from '../viewer/text.js';
 
 export type ReportsDeps = { db: Db; config: Config; storage: ReportStorage };
 
@@ -29,6 +32,9 @@ function visibles(req: Request): { userId?: string } {
   const { id, role } = req.auth!.user;
   return role === 'reporter' ? { userId: id } : {};
 }
+
+/** CSP del visor HTML (D-035, D-052): documento aislado, sin scripts ni recursos externos. */
+const HTML_VIEWER_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'";
 
 /** reportId de la ruta si es un UUID; si no, responde 404 (un ID mal formado no existe). */
 function reportIdDe(req: Request, res: Response): string | undefined {
@@ -118,6 +124,53 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
     // Por regla (R1…R8, orden del enum) y luego por fecha e id: orden estable aunque se inserten juntos.
     const hallazgos = await db.finding.findMany({ where: { reportId: id }, orderBy: [{ ruleId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] });
     res.json({ items: hallazgos.map(toFindingDto) });
+  });
+
+  /**
+   * Bytes del correo para el visor, con las mismas reglas de visibilidad (ajeno o no UUID → 404).
+   * Mientras el análisis no termine → 409 report_not_ready. Responde y devuelve undefined si no sigue.
+   */
+  async function bytesParaVer(req: Request, res: Response) {
+    const id = reportIdDe(req, res);
+    if (!id) return undefined;
+    const r = await db.report.findFirst({ where: { id, ...visibles(req) }, select: { status: true, source: true, storageKey: true } });
+    if (!r) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return undefined;
+    }
+    if (r.status === 'queued' || r.status === 'processing') {
+      sendError(req, res, 409, 'report_not_ready', 'El análisis de este reporte todavía no termina.');
+      return undefined;
+    }
+    return { id, source: r.source, bytes: await storage.read(r.storageKey) };
+  }
+
+  // HTML saneado al pedirlo (no se guarda saneado) para el <iframe sandbox> del front (D-035).
+  router.get('/:reportId/html', conSesion, async (req, res) => {
+    const correo = await bytesParaVer(req, res);
+    if (!correo) return;
+    const html = await readHtml(correo.bytes, correo.source);
+    if (html === null) {
+      sendError(req, res, 404, 'not_found', 'Este correo no trae versión HTML; usa la pestaña de texto.');
+      return;
+    }
+    const vista = renderSafeHtml(html);
+    if (vista.fallback) req.log.warn({ reportId: correo.id }, 'HTML no saneable: se responde el documento de respaldo');
+    // Reemplaza la CSP global y quita X-Frame-Options: el front la incrusta en un iframe del mismo
+    // origen (D-052); frame-ancestors 'self' impide que otro sitio la incruste.
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('Content-Security-Policy', HTML_VIEWER_CSP);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(vista.html);
+  });
+
+  // Texto plano con todas las URL desactivadas (D-017; convención 7 del contrato).
+  router.get('/:reportId/text', conSesion, async (req, res) => {
+    const correo = await bytesParaVer(req, res);
+    if (!correo) return;
+    const texto = defangText(await readText(correo.bytes, correo.source));
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.status(200).send(texto);
   });
 
   // Reportante: el suyo. Analista y administrador: cualquiera. El csrfGuard ya exigió el token.
