@@ -23,6 +23,13 @@ export const AuditAction = {
   indicatorPropose: 'indicator.propose',
   indicatorConfirm: 'indicator.confirm',
   indicatorDismiss: 'indicator.dismiss',
+  incidentCreate: 'incident.create',
+  incidentUpdate: 'incident.update',
+  incidentReportAdd: 'incident.report_add',
+  incidentReportRemove: 'incident.report_remove',
+  incidentIndicatorAdd: 'incident.indicator_add',
+  incidentIndicatorRemove: 'incident.indicator_remove',
+  incidentComment: 'incident.comment',
   bootstrapAdmin: 'system.bootstrap_admin',
   cleanup: 'system.cleanup',
 } as const;

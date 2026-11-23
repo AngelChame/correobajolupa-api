@@ -11,7 +11,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE incident_comments, incident_indicators, incident_reports, incidents, indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
 });
 
 function crearUsuario(email = 'ana@ejemplo.invalid') {
@@ -44,6 +44,10 @@ describe('migración inicial', () => {
       'audit_events',
       'exclusions',
       'findings',
+      'incident_comments',
+      'incident_indicators',
+      'incident_reports',
+      'incidents',
       'indexed_message_attachments',
       'indexed_message_links',
       'indexed_messages',

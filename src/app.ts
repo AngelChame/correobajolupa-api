@@ -11,6 +11,7 @@ import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
 import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
+import { createIncidentsRouter } from './incidents/routes.js';
 import { createIndicatorsRouter } from './indicators/routes.js';
 import { createLabRouter } from './lab/routes.js';
 import { labProviderFactory } from './lab/sync.js';
@@ -122,6 +123,8 @@ export function createApp({ logger, db, config, decoyHash, storage, openMailProv
   v1.use(createLabRouter({ db, config, storage, openProvider: openMailProvider ?? labProviderFactory(config) }));
   // Indicadores y lista de exclusión (M5): /indicators y /exclusions.
   v1.use(createIndicatorsRouter({ db, config }));
+  // Incidentes y comentarios (M6): /incidents. La cuarentena (M7) cuelga de aquí.
+  v1.use(createIncidentsRouter({ db }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

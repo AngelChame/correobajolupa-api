@@ -2655,7 +2655,7 @@
             }
           },
           "409": {
-            "description": "El reporte ya está asociado (`conflict`).",
+            "description": "El reporte ya está asociado, o el incidente ya es final (`conflict`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2732,6 +2732,16 @@
           },
           "404": {
             "description": "El incidente no existe o el reporte no está asociado (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El incidente ya es final: no se le pueden quitar reportes (`conflict`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2834,7 +2844,7 @@
             }
           },
           "409": {
-            "description": "El indicador ya está asociado (`conflict`).",
+            "description": "El indicador ya está asociado, o el incidente ya es final (`conflict`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2911,6 +2921,16 @@
           },
           "404": {
             "description": "El incidente no existe o el indicador no está asociado (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El incidente ya es final: no se le pueden quitar indicadores (`conflict`).",
             "content": {
               "application/json": {
                 "schema": {
