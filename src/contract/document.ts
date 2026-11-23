@@ -13,7 +13,7 @@ import {
 } from './schemas/reports.js';
 
 /** Sube con cada cambio del contrato; los cambios que rompen algo se avisan a Cesar. */
-export const CONTRACT_VERSION = '0.2.0';
+export const CONTRACT_VERSION = '0.2.1';
 
 const json = <T extends z.ZodType>(schema: T) => ({ 'application/json': { schema } });
 const error = (description: string) => ({ description, content: json(ErrorResponse) });
@@ -175,7 +175,11 @@ export function buildDocument() {
           tags: ['Reportes'],
           summary: 'Listar reportes (el reportante ve solo los suyos; analista y administrador, todos)',
           requestParams: { query: PageQuery.extend({ status: ReportStatus.optional() }) },
-          responses: { 200: { description: 'Página de reportes.', content: json(ReportList) }, 401: e401 },
+          responses: {
+            200: { description: 'Página de reportes.', content: json(ReportList) },
+            400: error('Parámetros de paginación o filtro inválidos (`validation_error`).'),
+            401: e401,
+          },
         },
       },
       '/reports/paste': {

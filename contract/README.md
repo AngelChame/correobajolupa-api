@@ -22,6 +22,8 @@ y `npm test` falla si el archivo commiteado no coincide con lo generado.
 
 ## Cambios
 
+- **0.2.1:** `GET /reports` declara **400 `validation_error`** para paginación o filtro de estado inválidos,
+  igual que `GET /users`. Solo agrega.
 - **0.2.0:** `PATCH /users/{userId}` puede responder **409 `conflict`** (un administrador no puede quitarse el
   rol ni desactivarse, y siempre debe quedar al menos un administrador activo). `GET /users` declara **400
   `validation_error`** para paginación o filtro inválidos. Nuevo código de error `conflict`. Solo agrega.
