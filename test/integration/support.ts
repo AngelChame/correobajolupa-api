@@ -10,6 +10,7 @@ import { createDb } from '../../src/db/client.js';
 import type { Role } from '../../src/generated/prisma/enums.js';
 import { createLogger } from '../../src/logger.js';
 import { createDiskStorage } from '../../src/storage/disk.js';
+import type { MailProvider } from '../../src/mail/provider.js';
 import type { ReportStorage } from '../../src/storage/storage.js';
 import { testConfig } from '../helpers.js';
 import { testDatabaseUrl } from './test-db.js';
@@ -23,6 +24,9 @@ const claveHash = await hashPassword(CLAVE);
 
 export async function limpiarBase(): Promise<void> {
   await db.$executeRawUnsafe('TRUNCATE attachments, report_links, findings, reports, audit_events, sessions, users');
+  // Laboratorio (M4): los buzones los crea la migración; solo se vacían sus mensajes y su estado.
+  await db.$executeRawUnsafe('TRUNCATE indexed_message_attachments, indexed_message_links, indexed_messages');
+  await db.$executeRawUnsafe(`UPDATE mailboxes SET last_sync_at = NULL, last_sync_status = 'never', sync_started_at = NULL`);
 }
 
 /** Carpeta temporal de este proceso de pruebas; se borra completa al salir. */
@@ -30,13 +34,14 @@ const RAIZ_ALMACENAMIENTO = mkdtempSync(join(tmpdir(), 'cbl-reports-'));
 process.on('exit', () => rmSync(RAIZ_ALMACENAMIENTO, { recursive: true, force: true }));
 
 /** App de prueba con base real y almacenamiento en una subcarpeta temporal propia (storageDir). */
-export function crearApp(overrides: NodeJS.ProcessEnv = {}, opciones: { storage?: ReportStorage } = {}) {
+export function crearApp(overrides: NodeJS.ProcessEnv = {}, opciones: { storage?: ReportStorage; openMailProvider?: (address: string) => Promise<MailProvider> } = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
   const storageDir = mkdtempSync(join(RAIZ_ALMACENAMIENTO, 'app-'));
   const config = testConfig({ DATABASE_URL: testDatabaseUrl(), STORAGE_DIR: storageDir, ...overrides });
   const storage = opciones.storage ?? createDiskStorage(storageDir);
-  return { app: createApp({ logger, db, config, decoyHash, storage }), lineas, logger, config, storageDir, storage };
+  const lab = opciones.openMailProvider ? { openMailProvider: opciones.openMailProvider } : {};
+  return { app: createApp({ logger, db, config, decoyHash, storage, ...lab }), lineas, logger, config, storageDir, storage };
 }
 
 /** Archivos que hay en la carpeta del almacenamiento, como rutas relativas "reportId/nombre". */
