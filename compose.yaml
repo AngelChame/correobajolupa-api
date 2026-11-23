@@ -1,6 +1,7 @@
 # Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API; M1: volumen de reportes y
 # worker de análisis (cola en PostgreSQL, D-054).
-# Llegan después: ClamAV (M2), Dovecot (M4), el front (D-031) y el proxy (nº 28).
+# Front (D-031) con el perfil web: docker compose --profile web up -d --build (ver README).
+# Llegan después: ClamAV (M2), Dovecot (M4) y el proxy con HTTPS (nº 28).
 # Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
 
 name: correobajolupa
@@ -125,6 +126,24 @@ services:
       disable: true
     # Tiempo para terminar el análisis en curso tras SIGTERM (el worker sale solo a los 25 s).
     stop_grace_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  # Front de Cesar (D-031): nginx sirve la SPA y reenvía /api/* a la API (mismo origen, D-052).
+  # Solo con --profile web; sin el repo al lado, el Compose normal no lo necesita.
+  # Con este perfil, la API debe confiar en UN salto de proxy: TRUST_PROXY_HOPS=1 en el .env
+  # (ver README; nunca true).
+  web:
+    profiles: [web]
+    build:
+      context: ${WEB_REPO_DIR:-../correobajolupa-web}
+    environment:
+      API_UPSTREAM: api:3000
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
     logging: *logging
 
