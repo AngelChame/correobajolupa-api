@@ -17,9 +17,13 @@ Sirven para probar el lector de correos, las reglas 1 a 7 y el sanitizador del v
 
 Cada caso tiene `id`, `input` (`eml` o `paste`), `file`, `kind`, `expectedRules` (`R1`…`R7`), `status`
 (`completed` o `limited`), `limitedReason` (`missing_headers`, `parse_error` o `null`), `tests` (casos P del
-documento de requerimientos) y, si aplica, `evidence`, `notes`, `forbiddenInSanitizedHtml` y
+documento de requerimientos) y, si aplica, `evidence`, `decodedText`, `notes`, `forbiddenInSanitizedHtml` y
 `mustKeepInSanitizedHtml`. Reglas y estados usan los mismos valores que el contrato (`RuleId`, `ReportStatus`,
 `LimitedReason`).
+
+- `evidence`: textos que deben aparecer en la evidencia de los hallazgos (solo casos con reglas).
+- `decodedText`: textos que deben aparecer en el asunto o el cuerpo ya decodificados (charset,
+  quoted-printable, partes que sí se pudieron leer). Prueba al lector, no a las reglas.
 
 Las evidencias van en forma cruda. La API las devuelve desactivadas (`hxxp://dominio[.]com`, D-017), así que la
 prueba compara contra el valor antes de desactivar o desactiva el esperado.

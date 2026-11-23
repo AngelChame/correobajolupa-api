@@ -22,6 +22,9 @@ const Case = z.looseObject({
   expectedRules: z.array(RuleId),
   status: ReportStatus,
   limitedReason: LimitedReason.nullable(),
+  // evidence: para la evidencia de los hallazgos; decodedText: para el texto decodificado (lector).
+  evidence: z.array(z.string().min(1)).min(1).optional(),
+  decodedText: z.array(z.string().min(1)).min(1).optional(),
 });
 const Expected = z.looseObject({ cases: z.array(Case).min(1) });
 

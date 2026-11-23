@@ -68,7 +68,7 @@
       "tests": [
         "P-02"
       ],
-      "evidence": [
+      "decodedText": [
         "Información de la acción",
         "mañana"
       ],
@@ -366,7 +366,7 @@
       "tests": [
         "P-03"
       ],
-      "evidence": [
+      "decodedText": [
         "Primera parte completa."
       ],
       "notes": "Falta el delimitador final y la segunda parte está cortada. No debe fallar: se analiza lo que se pueda y se avisa que el análisis es limitado (D-004)."
