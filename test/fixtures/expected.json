@@ -353,7 +353,7 @@
       "mustKeepInSanitizedHtml": [
         "Texto visible legítimo."
       ],
-      "notes": "Comprueba el sanitizador y la CSP del visor (D-035). La regla 5 sale del único enlace <a> (destino IP). Los demás destinos con IP (iframe, form, object, embed, base, img) y el 'javascript:' dentro del CSS no son enlaces <a>: por ahora no generan hallazgo (por decidir si se amplía la extracción). El HTML saneado no debe contener nada de la lista 'prohibido_en_html_saneado'."
+      "notes": "Comprueba el sanitizador y la CSP del visor (D-035). La regla 5 sale del único enlace <a> (destino IP). Los demás destinos con IP (iframe, form, object, embed, base, img) y el 'javascript:' dentro del CSS no son enlaces <a>: por ahora no generan hallazgo (por decidir si se amplía la extracción). El HTML saneado no debe contener nada de la lista 'forbiddenInSanitizedHtml'."
     },
     {
       "id": "H02-multipart-truncado",
