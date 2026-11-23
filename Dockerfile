@@ -38,6 +38,9 @@ COPY package.json package-lock.json ./
 # pierde es pg-cloudflare, que solo sirve en Cloudflare Workers.
 RUN npm ci --omit=dev --omit=optional && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# Carpeta del volumen de reportes (D-038), de node y solo para node. Un volumen con nombre nuevo
+# copia dueño y permisos de esta carpeta; sin ella Docker la crearía de root y node no podría escribir.
+RUN mkdir -p /data/reports && chown node:node /data/reports && chmod 700 /data/reports
 # Sin privilegios de root dentro del contenedor.
 USER node
 EXPOSE 3000

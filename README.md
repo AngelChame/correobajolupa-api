@@ -65,7 +65,7 @@ Compromisos conocidos de esta etapa (M0):
 
 - El 409 `email_taken` revela que un correo ya tiene cuenta (lo pide el contrato); el límite por IP lo frena.
 - Con 5 fallos por correo, alguien puede bloquear 15 min la entrada de una cuenta concreta.
-- Los contadores de los límites viven en memoria: se reinician al reiniciar la API (pasan a Redis en M1 si hace falta).
+- Los contadores de los límites viven en memoria: se reinician al reiniciar la API (D-054 dejó fuera Redis; si hiciera falta compartirlos, por decidir dónde).
 - **`trust proxy` está apagado** hasta que exista el proxy inverso (decisión nº 28). Sin proxy, dentro del Compose la API ve la IP del puente de Docker, así que los límites por IP (también el global) los comparten todas las personas. Al poner el proxy hay que activar `trust proxy` con el número exacto de saltos y revisar los límites.
 
 Prueba rápida con `curl` (la pila levantada):

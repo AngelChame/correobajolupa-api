@@ -1,5 +1,6 @@
-# Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API.
-# Llegan después: Redis y el trabajador (M1), ClamAV (M2), Dovecot (M4), el front (D-031) y el proxy (nº 28).
+# Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API; M1: volumen de reportes.
+# Llegan después: el worker de análisis (M1, cola en PostgreSQL, D-054), ClamAV (M2), Dovecot (M4),
+# el front (D-031) y el proxy (nº 28).
 # Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
 
 name: correobajolupa
@@ -9,6 +10,10 @@ x-logging: &logging
   options:
     max-size: "10m"
     max-file: "3"
+
+# Archivos de reportes (D-038). Lo montan la API y, cuando llegue, el worker, en la misma ruta
+# que STORAGE_DIR. Nadie más: ni la base ni el front lo ven.
+x-reports-volume: &reports-volume reports-data:/data/reports
 
 services:
   db:
@@ -46,7 +51,7 @@ services:
       context: .
       target: runtime
     # Solo las variables que la API usa hoy; el resto del .env no entra al contenedor.
-    # Se agregan aquí conforme llegan los módulos (Redis en M1, ClamAV en M2...).
+    # Se agregan aquí conforme llegan los módulos (ClamAV en M2...).
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -66,6 +71,19 @@ services:
       RATE_LIMIT_LOGIN_WINDOW_MIN: ${RATE_LIMIT_LOGIN_WINDOW_MIN:-}
       # Límite global por IP en /api/v1 (salvo /health). Sin proxy todos comparten IP (D-048).
       RATE_LIMIT_GLOBAL_PER_MINUTE: ${RATE_LIMIT_GLOBAL_PER_MINUTE:-}
+      # Saltos de proxy de confianza: 0 mientras no haya proxy delante (nº 28).
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      # M1: reportes. STORAGE_DIR es fija: tiene que coincidir con el punto de montaje del volumen.
+      STORAGE_DIR: /data/reports
+      MAX_EML_BYTES: ${MAX_EML_BYTES:-}
+      MAX_PASTE_BYTES: ${MAX_PASTE_BYTES:-}
+      REPORTS_PER_USER_PER_HOUR: ${REPORTS_PER_USER_PER_HOUR:-}
+      INSTITUTIONAL_DOMAINS: ${INSTITUTIONAL_DOMAINS:-}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+    volumes:
+      - *reports-volume
     depends_on:
       db:
         condition: service_healthy
@@ -99,3 +117,4 @@ services:
 
 volumes:
   db-data:
+  reports-data:
