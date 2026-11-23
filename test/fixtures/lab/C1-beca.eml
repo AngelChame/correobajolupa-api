@@ -1,0 +1,13 @@
+From: Programa de becas <convocatorias@apoyo-becas.example>
+To: Estudiante <student@lab.example>
+Subject: Solicitud de beca incompleta
+Date: Thu, 19 Nov 2026 12:30:00 -0600
+Message-ID: <c1.beca@lab.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<p>Hola:</p>
+<p>Su solicitud de beca quedó incompleta. Complétela antes del viernes para no perder el apoyo.</p>
+<p><a href="http://203.0.113.7/beca/solicitud">becas.universidad-ejemplo.example/solicitud</a></p>
+<p>Coordinación de becas</p>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, loadImapLabConfig } from '../src/config.js';
 
 const URL_VALIDA = 'postgresql://usuario:MARCADOR_SECRETO@db:5432/correobajolupa';
 
@@ -102,6 +102,43 @@ describe('loadConfig', () => {
     // Arriendo de 30 s: el escaneo puede usar como mucho 15 s.
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, JOB_LEASE_SECONDS: '30', CLAMAV_TOTAL_BUDGET_MS: '15000' }).CLAMAV_TOTAL_BUDGET_MS).toBe(15_000);
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, JOB_LEASE_SECONDS: '30' })).toContain('CLAMAV_TOTAL_BUDGET_MS');
+  });
+
+  it('aplica los valores por defecto de M4 (IMAP del laboratorio) y valida host y contraseña', () => {
+    const config = loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: '' });
+    expect(config).toMatchObject({ IMAP_LAB_HOST: 'imap', IMAP_LAB_PORT: 143 });
+    expect(config.IMAP_LAB_PASSWORD).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');
+    for (const valor of ['http://imap', 'imap:143', 'a b', '-imap']) {
+      expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_HOST: valor }), valor).toContain('IMAP_LAB_HOST');
+    }
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PORT: '70000' })).toContain('IMAP_LAB_PORT');
+    // Corta: la API arranca igual (D-003; el laboratorio responderá 503). Demasiado larga: falla
+    // nombrando la variable, nunca su valor.
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: 'cambiar' }).IMAP_LAB_PASSWORD).toBe('cambiar');
+    const mensaje = mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: `MARCADOR_LARGO${'x'.repeat(120)}` });
+    expect(mensaje).toContain('IMAP_LAB_PASSWORD');
+    expect(mensaje).not.toContain('MARCADOR_');
+  });
+
+  it('SYNC_MAX_MESSAGES y SYNC_BUDGET_MS: valores por defecto y rangos', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA })).toMatchObject({ SYNC_MAX_MESSAGES: 500, SYNC_BUDGET_MS: 45_000 });
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, SYNC_BUDGET_MS: '55000' }).SYNC_BUDGET_MS).toBe(55_000);
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, SYNC_BUDGET_MS: '60000' })).toContain('SYNC_BUDGET_MS');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, SYNC_MAX_MESSAGES: '0' })).toContain('SYNC_MAX_MESSAGES');
+  });
+
+  it('loadImapLabConfig lee solo las variables del laboratorio, sin DATABASE_URL', () => {
+    expect(loadImapLabConfig({})).toEqual({ IMAP_LAB_HOST: 'imap', IMAP_LAB_PORT: 143 });
+    expect(loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');
+    let mensaje = '';
+    try {
+      loadImapLabConfig({ IMAP_LAB_PASSWORD: `MARCADOR_${'x'.repeat(130)}` });
+    } catch (error) {
+      mensaje = (error as Error).message;
+    }
+    expect(mensaje).toContain('IMAP_LAB_PASSWORD');
+    expect(mensaje).not.toContain('MARCADOR_');
   });
 
   it('TRUST_PROXY_HOPS acepta solo un número de saltos, nunca true', () => {

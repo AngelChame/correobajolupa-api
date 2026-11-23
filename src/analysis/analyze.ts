@@ -79,6 +79,7 @@ function finish(parsed: ParsedMail, parseError: boolean, missingHeaders: boolean
   return {
     subject: recortar(parsed.subject, MAX_SUBJECT),
     fromAddress,
+    replyTo: replyTo.flatMap((a) => recortar(a, MAX_ADDRESS) ?? []),
     status: limitedReason ? 'limited' : 'completed',
     limitedReason,
     hasHtml: html !== '',
@@ -97,6 +98,7 @@ function emptyResult(): AnalysisResult {
   return {
     subject: null,
     fromAddress: null,
+    replyTo: [],
     status: 'limited',
     limitedReason: 'parse_error',
     hasHtml: false,

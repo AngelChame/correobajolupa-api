@@ -1,7 +1,8 @@
 # Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API; M1: volumen de reportes y
-# worker de análisis (cola en PostgreSQL, D-054); M2: ClamAV para los adjuntos.
+# worker de análisis (cola en PostgreSQL, D-054); M2: ClamAV para los adjuntos; M4: Dovecot, el
+# servidor IMAP del laboratorio (D-043).
 # Front (D-031) con el perfil web: docker compose --profile web up -d --build (ver README).
-# Llegan después: Dovecot (M4) y el proxy con HTTPS (nº 28).
+# Llega después: el proxy con HTTPS (nº 28).
 # Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
 
 name: correobajolupa
@@ -83,8 +84,19 @@ services:
       WORKER_POLL_MS: ${WORKER_POLL_MS:-}
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+      # M4: laboratorio IMAP. Sin contraseña (o con menos de 16 caracteres) las rutas del
+      # laboratorio responden 503 y el resto de la API funciona igual (D-003, D-060).
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+      SYNC_MAX_MESSAGES: ${SYNC_MAX_MESSAGES:-}
+      SYNC_BUDGET_MS: ${SYNC_BUDGET_MS:-}
     volumes:
       - *reports-volume
+    # default: la base. imap-net: el IMAP del laboratorio.
+    # Sin depends_on de imap: el modo real no depende del laboratorio (D-003); si el IMAP no está,
+    # las rutas del laboratorio responderán 503.
+    networks: [default, imap-net]
     depends_on:
       db:
         condition: service_healthy
@@ -123,8 +135,9 @@ services:
       MAX_ATTACHMENTS_SCANNED: ${MAX_ATTACHMENTS_SCANNED:-}
     volumes:
       - *reports-volume
-    # default: la base. clamav-net: solo el worker y ClamAV.
-    networks: [default, clamav-net]
+    # default: la base. clamav-net: solo el worker y ClamAV. imap-net: el IMAP del laboratorio
+    # (sin depends_on de imap: el análisis del modo real no lo espera, D-003).
+    networks: [default, clamav-net, imap-net]
     depends_on:
       db:
         condition: service_healthy
@@ -155,6 +168,32 @@ services:
     volumes:
       - clamav-db:/var/lib/clamav
     networks: [clamav-net]
+    restart: unless-stopped
+    logging: *logging
+
+  # Servidor IMAP del laboratorio (M4, D-043): Dovecot 2.3 sobre Ubuntu 22.04 (docker/imap/).
+  # Tres buzones sintéticos (D-015): student, teacher y staff @lab.example, con la misma contraseña
+  # IMAP_LAB_PASSWORD (16 caracteres o más). Sin ella, o si es corta, solo este contenedor se niega a
+  # arrancar (lo valida arranque.sh); el resto de la pila funciona. Puerto 143 sin TLS solo dentro de
+  # imap-net: sin puertos publicados al host. Mensajes y UIDVALIDITY en el volumen imap-data.
+  imap:
+    build:
+      context: ./docker/imap
+    environment:
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+    volumes:
+      - imap-data:/var/vmail
+    # Sistema de archivos de solo lectura, sin capacidades de Linux y sin escalar privilegios:
+    # Dovecot corre como vmail y solo escribe en el volumen y en estas carpetas en memoria.
+    read_only: true
+    tmpfs:
+      - /run/dovecot:uid=5000,gid=5000,mode=0755
+      - /run/dovecot-lab:uid=5000,gid=5000,mode=0700
+      - /var/lib/dovecot:uid=5000,gid=5000,mode=0700
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [imap-net]
+    # El healthcheck viene en la imagen (salud.sh): saludo en el 143 y base de usuarios.
     restart: unless-stopped
     logging: *logging
 
@@ -216,14 +255,65 @@ services:
       db-test:
         condition: service_healthy
 
+  # `npm run test:imap:docker`: pruebas de humo contra el Dovecot del laboratorio (servidor y siembra), desde dentro de
+  # imap-net (el 143 no se publica al host). default solo sirve para que npm ci descargue paquetes.
+  test-imap:
+    profiles: [test]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app
+      - test-node-modules:/app/node_modules
+    environment:
+      IMAP_LAB_SMOKE: "1"
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+    networks: [default, imap-net]
+    # Un archivo a la vez: la siembra cuenta mensajes y imap-smoke inserta y borra uno temporal.
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run --no-file-parallelism test/imap-smoke.test.ts test/lab-seed-smoke.test.ts test/mail-imap-smoke.test.ts"]
+    depends_on:
+      imap:
+        condition: service_healthy
+
+  # `npm run lab:seed`: siembra los 21 mensajes sintéticos de test/fixtures/lab en los buzones del
+  # laboratorio (APPEND a INBOX; idempotente). Solo con --profile tools; corre dentro de imap-net
+  # porque el 143 no se publica. El repo se monta de solo lectura.
+  lab-seed:
+    profiles: [tools]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app:ro
+      - test-node-modules:/app/node_modules
+    environment:
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+    networks: [default, imap-net]
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx tsx src/lab/seed.ts"]
+    depends_on:
+      imap:
+        condition: service_healthy
+    restart: "no"
+
 networks:
   default:
   clamav-net:
+  # internal: el IMAP del laboratorio no sale a internet; la API y el worker sí, por default.
+  imap-net:
+    internal: true
 
 volumes:
   db-data:
   reports-data:
   # Firmas de ClamAV: sobreviven a reinicios y no se descargan de nuevo cada vez.
   clamav-db:
+  # Buzones del laboratorio (Maildir): sobreviven a reinicios con el mismo UIDVALIDITY.
+  imap-data:
   test-node-modules:
   test-prisma-generated:

@@ -1,0 +1,14 @@
+From: Soporte de correo <soporte@universidad-ejernplo.example>
+Reply-To: Mesa de ayuda <ayuda@buzon-respuestas.example>
+To: Personal administrativo <staff@lab.example>
+Subject: Verifique su cuenta de correo institucional
+Date: Tue, 17 Nov 2026 08:15:00 -0600
+Message-ID: <a3.vence-correo@lab.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<p>Estimado colaborador:</p>
+<p>Su buzón de correo institucional será desactivado si no confirma sus datos hoy.</p>
+<p>Para conservarlo, ingrese en <a href="https://universidad-ejernplo.example/verificar?ref=a3">https://universidad-ejemplo.example/correo</a></p>
+<p>Equipo de soporte</p>

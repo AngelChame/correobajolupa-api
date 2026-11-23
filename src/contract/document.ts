@@ -396,6 +396,7 @@ export function buildDocument() {
             401: e401,
             403: e403RoleCsrf,
             404: error('El buzón o el reporte no existe o no se puede ver (`not_found`).'),
+            409: error('Ya hay una sincronización o una entrega simulada de ese buzón en curso (`conflict`).'),
             503: e503,
           },
         },

@@ -11,6 +11,9 @@ import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
 import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
+import { createLabRouter } from './lab/routes.js';
+import { labProviderFactory } from './lab/sync.js';
+import type { MailProvider } from './mail/provider.js';
 import { createReportsRouter } from './reports/routes.js';
 import type { ReportStorage } from './storage/storage.js';
 import { createUsersRouter } from './users/routes.js';
@@ -38,9 +41,14 @@ export type AppDeps = {
   decoyHash: string;
   /** Archivos de los reportes (D-038). */
   storage: ReportStorage;
+  /**
+   * Proveedor de correo del laboratorio (M4). Por defecto, el IMAP de IMAP_LAB_*; las pruebas
+   * inyectan uno en memoria. Si el laboratorio no está, sus rutas responden 503 (D-003).
+   */
+  openMailProvider?: (address: string) => Promise<MailProvider>;
 };
 
-export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
+export function createApp({ logger, db, config, decoyHash, storage, openMailProvider }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   // 'trust proxy' depende de TRUST_PROXY_HOPS (0 por defecto = apagado, mientras no exista el
@@ -109,6 +117,8 @@ export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
   v1.use('/auth', createAuthRouter({ db, config, decoyHash, limiters: createAuthLimiters(config) }));
   v1.use('/users', createUsersRouter({ db }));
   v1.use('/reports', createReportsRouter({ db, config, storage }));
+  // Laboratorio IMAP (M4): /mailboxes y /messages. Independiente del modo real (D-003).
+  v1.use(createLabRouter({ db, config, storage, openProvider: openMailProvider ?? labProviderFactory(config) }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

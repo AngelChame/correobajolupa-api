@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "description": "Conjunto sintético del laboratorio IMAP (M4): 21 mensajes en 3 buzones, 4 campañas simuladas, legítimos y dos trampas de falsos candidatos (D-019). Verdad de referencia para M5 y M8 (D-023).",
+  "institutionalDomains": [
+    "universidad-ejemplo.example"
+  ],
+  "mailboxes": [
+    "student@lab.example",
+    "teacher@lab.example",
+    "staff@lab.example"
+  ],
+  "matching": "Un indicador de tipo domain coincide con el dominio del remitente, del Reply-To o del host de un enlace (nunca con el texto visible). url compara la URL normalizada (sin query ni fragmento). sha256 compara adjuntos. sender compara la dirección del remitente.",
+  "messages": [
+    {
+      "id": "A1",
+      "file": "A1-vence-correo.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<a1.vence-correo@lab.example>",
+      "truth": "phishing",
+      "campaign": "A",
+      "expectedRules": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "note": "Dominio parecido (rn por m) en remitente y enlace; Reply-To a otro dominio; el texto visible muestra el dominio institucional real."
+    },
+    {
+      "id": "A2",
+      "file": "A2-vence-correo.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<a2.vence-correo@lab.example>",
+      "truth": "phishing",
+      "campaign": "A",
+      "expectedRules": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "note": "Misma campaña que A1 con otro asunto; misma URL normalizada (cambia solo la query)."
+    },
+    {
+      "id": "A3",
+      "file": "A3-vence-correo.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<a3.vence-correo@lab.example>",
+      "truth": "phishing",
+      "campaign": "A",
+      "expectedRules": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "note": "Misma campaña que A1 con otro asunto; misma URL normalizada (cambia solo la query)."
+    },
+    {
+      "id": "B1",
+      "file": "B1-factura.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<b1.factura@lab.example>",
+      "truth": "phishing",
+      "campaign": "B",
+      "expectedRules": [
+        "R7"
+      ],
+      "note": "Adjunto con doble extensión; bytes idénticos a B2 (mismo SHA-256)."
+    },
+    {
+      "id": "B2",
+      "file": "B2-factura.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<b2.factura@lab.example>",
+      "truth": "phishing",
+      "campaign": "B",
+      "expectedRules": [
+        "R7"
+      ],
+      "note": "Adjunto con doble extensión; bytes idénticos a B1 (mismo SHA-256)."
+    },
+    {
+      "id": "B3",
+      "file": "B3-factura-enlace.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<b3.factura-enlace@lab.example>",
+      "truth": "phishing",
+      "campaign": "B",
+      "expectedRules": [],
+      "decoyFor": "nube-compartida.example",
+      "note": "Variante de la campaña B sin adjunto: ninguna regla la detecta. Comparte el dominio nube-compartida.example con LC1 y LC2 (legítimos): confirmar ese dominio da falsos candidatos."
+    },
+    {
+      "id": "C1",
+      "file": "C1-beca.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<c1.beca@lab.example>",
+      "truth": "phishing",
+      "campaign": "C",
+      "expectedRules": [
+        "R2",
+        "R5"
+      ],
+      "note": "Texto visible con un subdominio institucional; el enlace va a una IP de documentación."
+    },
+    {
+      "id": "C2",
+      "file": "C2-beca.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<c2.beca@lab.example>",
+      "truth": "phishing",
+      "campaign": "C",
+      "expectedRules": [
+        "R2",
+        "R5"
+      ],
+      "note": "Misma campaña que C1, dirigida a personal administrativo."
+    },
+    {
+      "id": "D1",
+      "file": "D1-nomina.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<d1.nomina@lab.example>",
+      "truth": "phishing",
+      "campaign": "D",
+      "expectedRules": [
+        "R4"
+      ],
+      "note": "Enlace a un dominio internacionalizado (o cirílica) escrito en punycode."
+    },
+    {
+      "id": "D2",
+      "file": "D2-nomina.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<d2.nomina@lab.example>",
+      "truth": "phishing",
+      "campaign": "D",
+      "expectedRules": [
+        "R4"
+      ],
+      "note": "Misma campaña que D1."
+    },
+    {
+      "id": "D3",
+      "file": "D3-nomina.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<d3.nomina@lab.example>",
+      "truth": "phishing",
+      "campaign": "D",
+      "expectedRules": [
+        "R4"
+      ],
+      "note": "Misma campaña que D1, dirigida a estudiantes."
+    },
+    {
+      "id": "LA1",
+      "file": "LA1-aviso-institucional.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<la1.aviso-institucional@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Remitente y enlace del dominio institucional: la lista de exclusión debe impedir que salga como candidato."
+    },
+    {
+      "id": "LA2",
+      "file": "LA2-aviso-institucional.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<la2.aviso-institucional@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Igual que LA1 para docentes."
+    },
+    {
+      "id": "LA3",
+      "file": "LA3-aviso-institucional.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<la3.aviso-institucional@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Igual que LA1 para personal administrativo."
+    },
+    {
+      "id": "LB1",
+      "file": "LB1-boletin-cursos.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<lb1.boletin-cursos@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Boletín externo legítimo sin reglas."
+    },
+    {
+      "id": "LB2",
+      "file": "LB2-boletin-cursos.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<lb2.boletin-cursos@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Igual que LB1."
+    },
+    {
+      "id": "LC1",
+      "file": "LC1-documento-compartido.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<lc1.documento-compartido@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "decoyFor": "nube-compartida.example",
+      "note": "Legítimo: comparte el dominio nube-compartida.example con B3. Saldría como falso candidato si el analista confirma ese dominio (D-019)."
+    },
+    {
+      "id": "LC2",
+      "file": "LC2-documento-compartido.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<lc2.documento-compartido@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "decoyFor": "nube-compartida.example",
+      "note": "Legítimo: comparte el dominio nube-compartida.example con B3. Saldría como falso candidato si el analista confirma ese dominio (D-019)."
+    },
+    {
+      "id": "LD1",
+      "file": "LD1-personal.eml",
+      "mailbox": "student@lab.example",
+      "messageId": "<ld1.personal@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Texto plano sin enlaces ni adjuntos."
+    },
+    {
+      "id": "LD2",
+      "file": "LD2-personal.eml",
+      "mailbox": "teacher@lab.example",
+      "messageId": "<ld2.personal@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Texto plano sin enlaces ni adjuntos."
+    },
+    {
+      "id": "LD3",
+      "file": "LD3-personal.eml",
+      "mailbox": "staff@lab.example",
+      "messageId": "<ld3.personal@lab.example>",
+      "truth": "legit",
+      "campaign": null,
+      "expectedRules": [],
+      "note": "Texto plano sin enlaces ni adjuntos."
+    }
+  ],
+  "indicators": [
+    {
+      "campaign": "A",
+      "type": "domain",
+      "value": "universidad-ejernplo.example",
+      "candidates": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "falseCandidates": [],
+      "note": "Dominio parecido al institucional (remitente y enlace)."
+    },
+    {
+      "campaign": "A",
+      "type": "domain",
+      "value": "buzon-respuestas.example",
+      "candidates": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "falseCandidates": [],
+      "note": "Dominio del Reply-To."
+    },
+    {
+      "campaign": "A",
+      "type": "url",
+      "value": "https://universidad-ejernplo.example/verificar",
+      "candidates": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "falseCandidates": [],
+      "note": "URL normalizada sin query: las tres variantes (?ref=a1, a2, a3) coinciden."
+    },
+    {
+      "campaign": "A",
+      "type": "sender",
+      "value": "soporte@universidad-ejernplo.example",
+      "candidates": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "falseCandidates": [],
+      "note": "Remitente de la campaña."
+    },
+    {
+      "campaign": "B",
+      "type": "sha256",
+      "value": "e1ebcaeb1816296896173ffd4d783a7c5b7c9c23d73e610c805d4f9afabdf7db",
+      "candidates": [
+        "B1",
+        "B2"
+      ],
+      "falseCandidates": [],
+      "note": "SHA-256 de factura-0042.pdf.exe (mismos bytes en B1 y B2). B3 no trae adjunto."
+    },
+    {
+      "campaign": "B",
+      "type": "sender",
+      "value": "facturacion@proveedor-pagos.example",
+      "candidates": [
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "falseCandidates": [],
+      "note": "Remitente común: también encuentra B3, que ninguna regla detecta."
+    },
+    {
+      "campaign": "B",
+      "type": "domain",
+      "value": "proveedor-pagos.example",
+      "candidates": [
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "falseCandidates": [],
+      "note": "Dominio del remitente."
+    },
+    {
+      "campaign": "B",
+      "type": "domain",
+      "value": "nube-compartida.example",
+      "candidates": [
+        "B3"
+      ],
+      "falseCandidates": [
+        "LC1",
+        "LC2"
+      ],
+      "note": "Trampa 1 (D-019): servicio de archivos que también usan colegas legítimos. Compartir el dominio no confirma la campaña."
+    },
+    {
+      "campaign": "C",
+      "type": "url",
+      "value": "http://203.0.113.7/beca/solicitud",
+      "candidates": [
+        "C1",
+        "C2"
+      ],
+      "falseCandidates": [],
+      "note": "URL normalizada del enlace a la IP."
+    },
+    {
+      "campaign": "C",
+      "type": "domain",
+      "value": "203.0.113.7",
+      "candidates": [
+        "C1",
+        "C2"
+      ],
+      "falseCandidates": [],
+      "note": "Host del enlace (IP de documentación)."
+    },
+    {
+      "campaign": "C",
+      "type": "sender",
+      "value": "convocatorias@apoyo-becas.example",
+      "candidates": [
+        "C1",
+        "C2"
+      ],
+      "falseCandidates": [],
+      "note": "Remitente de la campaña."
+    },
+    {
+      "campaign": null,
+      "type": "domain",
+      "value": "universidad-ejemplo.example",
+      "candidates": [],
+      "falseCandidates": [
+        "LA1",
+        "LA2",
+        "LA3",
+        "LC1",
+        "LC2"
+      ],
+      "note": "Trampa 2: el texto visible de C (y de A) muestra el dominio institucional, pero no es indicador de la campaña. Debe estar en la lista de exclusión: si alguien lo confirma, estos legítimos no deben salir como candidatos."
+    },
+    {
+      "campaign": "D",
+      "type": "domain",
+      "value": "xn--nmina-avisos-4fk.example",
+      "candidates": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "falseCandidates": [],
+      "note": "Dominio internacionalizado en punycode (nomina-avisos.example escrito con una o cirílica, U+043E)."
+    },
+    {
+      "campaign": "D",
+      "type": "url",
+      "value": "https://xn--nmina-avisos-4fk.example/recibo",
+      "candidates": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "falseCandidates": [],
+      "note": "URL normalizada del enlace."
+    },
+    {
+      "campaign": "D",
+      "type": "sender",
+      "value": "rh@nomina-avisos.example",
+      "candidates": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "falseCandidates": [],
+      "note": "Remitente común de la campaña."
+    }
+  ]
+}

@@ -39,6 +39,19 @@ const MiB = 1024 * 1024;
 /** Nombre de host o IPv4 (sin esquema, puerto ni ruta). */
 const NOMBRE_DE_HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i;
 
+/**
+ * M4: IMAP del laboratorio (Dovecot, D-043). Puerto 143 sin TLS, solo dentro de la red imap-net
+ * de Docker. Esquema aparte para que la siembra (src/lab/seed.ts) lo lea sin DATABASE_URL.
+ */
+const ImapLabEnv = z.object({
+  IMAP_LAB_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('imap')),
+  IMAP_LAB_PORT: enteroEntre(1, 65535, 143),
+  // Contraseña de los tres buzones del laboratorio. Nunca se imprime. Aquí solo se limita el
+  // máximo: una contraseña corta o vacía no impide arrancar la API (el modo real no depende del
+  // laboratorio, D-003); el laboratorio responde 503 y Dovecot se niega a arrancar con menos de 16.
+  IMAP_LAB_PASSWORD: opcional(z.string().max(128)),
+});
+
 /** Variables de entorno que la API necesita hoy. Se agregan conforme llegan los módulos. */
 const Env = z
   .object({
@@ -104,6 +117,13 @@ const Env = z
     CLAMAV_MAX_SCAN_BYTES: enteroEntre(1, 100 * MiB, 10 * MiB),
     // Se escanean los primeros N adjuntos (se registran hasta 50); los demás quedan unsupported.
     MAX_ATTACHMENTS_SCANNED: enteroEntre(1, 50, 20),
+
+    // --- M4: IMAP del laboratorio (Dovecot, D-043). ---
+    ...ImapLabEnv.shape,
+    // Sincronización de un buzón: mensajes como mucho (lo demás se ignora y se cuenta) y tiempo
+    // máximo. El tiempo queda por debajo de los 60 s del proxy (nº 28).
+    SYNC_MAX_MESSAGES: enteroEntre(1, 5000, 500),
+    SYNC_BUDGET_MS: enteroEntre(1000, 55_000, 45_000),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
@@ -132,9 +152,19 @@ const Env = z
   });
 
 export type Config = z.infer<typeof Env>;
+export type ImapLabConfig = z.infer<typeof ImapLabEnv>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = Env.safeParse(env);
+  return parseEnv(Env, env);
+}
+
+/** Solo las variables del IMAP del laboratorio (sin DATABASE_URL ni el resto de la API). */
+export function loadImapLabConfig(env: NodeJS.ProcessEnv = process.env): ImapLabConfig {
+  return parseEnv(ImapLabEnv, env);
+}
+
+function parseEnv<T extends z.ZodType>(schema: T, env: NodeJS.ProcessEnv): z.infer<T> {
+  const parsed = schema.safeParse(env);
   if (!parsed.success) {
     // Solo se nombran las variables, nunca sus valores (pueden ser secretos). Las reglas
     // propias (code "custom") agregan su explicación, que tampoco incluye valores.

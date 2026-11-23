@@ -69,6 +69,8 @@ export type AnalysisOptions = { institutionalDomains: readonly string[] };
 export type AnalysisResult = {
   subject: string | null;
   fromAddress: string | null;
+  /** Direcciones de Reply-To (hasta 10), las mismas que usan R1 y R3. Texto del correo. */
+  replyTo: string[];
   status: 'completed' | 'limited';
   limitedReason: LimitedReason | null;
   hasHtml: boolean;
