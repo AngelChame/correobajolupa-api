@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { AuditAction, recordAudit } from '../audit.js';
 import { requireRole } from '../auth/roles.js';
 import type { Config } from '../config.js';
+import { PageQuery } from '../contract/schemas/common.js';
 import { CreateExclusionBody, Exclusion, Indicator, IndicatorQuery, ProposeIndicatorBody } from '../contract/schemas/indicators.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -10,6 +11,7 @@ import type { IndicatorType } from '../generated/prisma/enums.js';
 import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import { isUuid, uuidParam } from '../lab/routes.js';
+import { findCandidates } from './candidates.js';
 import { configExclusions, isExcluded } from './exclusions.js';
 import { defangIndicator, INVALID_VALUE, normalizeHost, normalizeIndicator } from './normalize.js';
 
@@ -264,6 +266,26 @@ export function createIndicatorsRouter({ db, config }: IndicatorsDeps) {
 
   router.post('/indicators/:indicatorId/confirm', analista, decidir('confirmed', AuditAction.indicatorConfirm));
   router.post('/indicators/:indicatorId/dismiss', analista, decidir('dismissed', AuditAction.indicatorDismiss));
+
+  // Búsqueda retrospectiva (RF-20, RF-21): solo con un indicador confirmado. Son candidatos, no una
+  // campaña confirmada (D-019). Solo lectura: no se audita, como GET /messages.
+  router.get('/indicators/:indicatorId/candidates', analista, async (req, res) => {
+    const id = uuidParam(req, res, 'indicatorId', INDICATOR_NOT_FOUND);
+    if (!id) return;
+    const query = parseQuery(PageQuery, req, res);
+    if (!query) return;
+    const indicador = await db.indicator.findUnique({ where: { id }, select: { id: true, type: true, value: true, status: true } });
+    if (!indicador) {
+      sendError(req, res, 404, 'not_found', INDICATOR_NOT_FOUND);
+      return;
+    }
+    if (indicador.status !== 'confirmed') {
+      sendError(req, res, 409, 'conflict', 'El indicador no está confirmado: solo se buscan candidatos de indicadores confirmados.');
+      return;
+    }
+    const { items, total } = await findCandidates(db, indicador, query);
+    res.json({ items, page: query.page, pageSize: query.pageSize, total });
+  });
 
   // Los institucionales de la configuración van primero, como solo lectura (id null).
   router.get('/exclusions', analista, async (_req, res) => {
