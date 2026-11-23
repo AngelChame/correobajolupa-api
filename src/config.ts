@@ -46,9 +46,10 @@ const NOMBRE_DE_HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i;
 const ImapLabEnv = z.object({
   IMAP_LAB_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('imap')),
   IMAP_LAB_PORT: enteroEntre(1, 65535, 143),
-  // Contraseña de los tres buzones del laboratorio. Opcional aquí (la API arranca sin el
-  // laboratorio); con valor, de 16 a 128 caracteres. Nunca se imprime.
-  IMAP_LAB_PASSWORD: opcional(z.string().min(16).max(128)),
+  // Contraseña de los tres buzones del laboratorio. Nunca se imprime. Aquí solo se limita el
+  // máximo: una contraseña corta o vacía no impide arrancar la API (el modo real no depende del
+  // laboratorio, D-003); el laboratorio responde 503 y Dovecot se niega a arrancar con menos de 16.
+  IMAP_LAB_PASSWORD: opcional(z.string().max(128)),
 });
 
 /** Variables de entorno que la API necesita hoy. Se agregan conforme llegan los módulos. */

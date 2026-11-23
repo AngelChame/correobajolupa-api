@@ -84,9 +84,16 @@ services:
       WORKER_POLL_MS: ${WORKER_POLL_MS:-}
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+      # M4: laboratorio IMAP. Sin contraseña (o con menos de 16 caracteres) las rutas del
+      # laboratorio responden 503 y el resto de la API funciona igual (D-003, D-060).
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+      SYNC_MAX_MESSAGES: ${SYNC_MAX_MESSAGES:-}
+      SYNC_BUDGET_MS: ${SYNC_BUDGET_MS:-}
     volumes:
       - *reports-volume
-    # default: la base. imap-net: el IMAP del laboratorio (lo usan los pasos siguientes de M4).
+    # default: la base. imap-net: el IMAP del laboratorio.
     # Sin depends_on de imap: el modo real no depende del laboratorio (D-003); si el IMAP no está,
     # las rutas del laboratorio responderán 503.
     networks: [default, imap-net]

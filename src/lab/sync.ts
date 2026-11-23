@@ -82,7 +82,8 @@ type Counts = { fetched: number; added: number; updated: number; deleted: number
 /** Proveedor IMAP real a partir de la configuración del laboratorio. */
 export function labProviderFactory(config: ImapLabConfig): (address: string) => Promise<MailProvider> {
   return async (address) => {
-    if (!config.IMAP_LAB_PASSWORD) throw new MailUnavailableError('falta IMAP_LAB_PASSWORD');
+    // Sin contraseña válida el laboratorio no está disponible (503); la API y el modo real siguen (D-003).
+    if (!config.IMAP_LAB_PASSWORD || config.IMAP_LAB_PASSWORD.length < 16) throw new MailUnavailableError('falta IMAP_LAB_PASSWORD');
     return openImapProvider({ host: config.IMAP_LAB_HOST, port: config.IMAP_LAB_PORT, user: address, password: config.IMAP_LAB_PASSWORD });
   };
 }

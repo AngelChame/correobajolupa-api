@@ -113,12 +113,12 @@ describe('loadConfig', () => {
       expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_HOST: valor }), valor).toContain('IMAP_LAB_HOST');
     }
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PORT: '70000' })).toContain('IMAP_LAB_PORT');
-    // Corta o demasiado larga: falla nombrando la variable, nunca su valor.
-    for (const valor of ['MARCADOR_CORTO', `MARCADOR_LARGO${'x'.repeat(120)}`]) {
-      const mensaje = mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: valor });
-      expect(mensaje).toContain('IMAP_LAB_PASSWORD');
-      expect(mensaje).not.toContain('MARCADOR_');
-    }
+    // Corta: la API arranca igual (D-003; el laboratorio responderá 503). Demasiado larga: falla
+    // nombrando la variable, nunca su valor.
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: 'cambiar' }).IMAP_LAB_PASSWORD).toBe('cambiar');
+    const mensaje = mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: `MARCADOR_LARGO${'x'.repeat(120)}` });
+    expect(mensaje).toContain('IMAP_LAB_PASSWORD');
+    expect(mensaje).not.toContain('MARCADOR_');
   });
 
   it('SYNC_MAX_MESSAGES y SYNC_BUDGET_MS: valores por defecto y rangos', () => {
@@ -133,7 +133,7 @@ describe('loadConfig', () => {
     expect(loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');
     let mensaje = '';
     try {
-      loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_CORTO' });
+      loadImapLabConfig({ IMAP_LAB_PASSWORD: `MARCADOR_${'x'.repeat(130)}` });
     } catch (error) {
       mensaje = (error as Error).message;
     }

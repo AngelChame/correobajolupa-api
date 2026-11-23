@@ -122,7 +122,7 @@ async function alreadyThere(imap: ImapFlow, messageId: string): Promise<boolean>
 
 async function main(): Promise<void> {
   const config = loadImapLabConfig();
-  if (!config.IMAP_LAB_PASSWORD) throw new Error('falta IMAP_LAB_PASSWORD');
+  if (!config.IMAP_LAB_PASSWORD || config.IMAP_LAB_PASSWORD.length < 16) throw new Error('falta IMAP_LAB_PASSWORD (16 caracteres o más)');
   const counts = await seedLab(
     { host: config.IMAP_LAB_HOST, port: config.IMAP_LAB_PORT, password: config.IMAP_LAB_PASSWORD },
     config.IMAP_LAB_HOST,
