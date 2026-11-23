@@ -104,6 +104,23 @@ describe('loadConfig', () => {
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, JOB_LEASE_SECONDS: '30' })).toContain('CLAMAV_TOTAL_BUDGET_MS');
   });
 
+  it('aplica los valores por defecto de M4 (IMAP del laboratorio) y valida host y contraseña', () => {
+    const config = loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: '' });
+    expect(config).toMatchObject({ IMAP_LAB_HOST: 'imap', IMAP_LAB_PORT: 143 });
+    expect(config.IMAP_LAB_PASSWORD).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');
+    for (const valor of ['http://imap', 'imap:143', 'a b', '-imap']) {
+      expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_HOST: valor }), valor).toContain('IMAP_LAB_HOST');
+    }
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PORT: '70000' })).toContain('IMAP_LAB_PORT');
+    // Corta o demasiado larga: falla nombrando la variable, nunca su valor.
+    for (const valor of ['MARCADOR_CORTO', `MARCADOR_LARGO${'x'.repeat(120)}`]) {
+      const mensaje = mensajeDeError({ DATABASE_URL: URL_VALIDA, IMAP_LAB_PASSWORD: valor });
+      expect(mensaje).toContain('IMAP_LAB_PASSWORD');
+      expect(mensaje).not.toContain('MARCADOR_');
+    }
+  });
+
   it('TRUST_PROXY_HOPS acepta solo un número de saltos, nunca true', () => {
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1);
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '' }).TRUST_PROXY_HOPS).toBe(0);

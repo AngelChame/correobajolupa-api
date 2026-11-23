@@ -104,6 +104,14 @@ const Env = z
     CLAMAV_MAX_SCAN_BYTES: enteroEntre(1, 100 * MiB, 10 * MiB),
     // Se escanean los primeros N adjuntos (se registran hasta 50); los demás quedan unsupported.
     MAX_ATTACHMENTS_SCANNED: enteroEntre(1, 50, 20),
+
+    // --- M4: IMAP del laboratorio (Dovecot, D-043). Se validan desde ya; los usan los pasos siguientes. ---
+    // Puerto 143 sin TLS: solo dentro de la red imap-net de Docker.
+    IMAP_LAB_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('imap')),
+    IMAP_LAB_PORT: enteroEntre(1, 65535, 143),
+    // Contraseña de los tres buzones del laboratorio. Opcional aquí (la API arranca sin el
+    // laboratorio); con valor, de 16 a 128 caracteres. Nunca se imprime.
+    IMAP_LAB_PASSWORD: opcional(z.string().min(16).max(128)),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
