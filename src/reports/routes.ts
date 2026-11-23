@@ -3,7 +3,9 @@ import { requireRole } from '../auth/roles.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
+import { PasteBody } from '../contract/schemas/reports.js';
 import { sendError } from '../http/errors.js';
+import { parseBody } from '../http/validate.js';
 import type { ReportStorage } from '../storage/storage.js';
 import { createReport, ReportQuotaExceededError } from './create.js';
 import { toSummaryDto } from './dto.js';
@@ -35,6 +37,13 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
   // El csrfGuard global ya exigió sesión y X-CSRF-Token: el archivo no se lee sin ellos.
   router.post('/', conSesion, emlUpload(config.MAX_EML_BYTES), async (req, res) => {
     await crear(req, res, 'eml', req.file!.buffer);
+  });
+
+  // Texto pegado: se guarda como bytes UTF-8, igual que un .eml (el worker lo leerá igual).
+  router.post('/paste', conSesion, async (req, res) => {
+    const body = parseBody(PasteBody, req, res);
+    if (!body) return;
+    await crear(req, res, 'paste', Buffer.from(body.text, 'utf8'));
   });
 
   return router;

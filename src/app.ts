@@ -78,7 +78,12 @@ export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
   // Límite global por IP en /api/v1 (salvo /health), antes de leer el cuerpo.
   app.use('/api/v1', globalRateLimit(config));
 
-  // Límite provisional; los de reportes y archivos se fijan con la nº 5.
+  // POST /reports/paste admite textos de hasta MAX_PASTE_BYTES (el contrato permite 200 000
+  // caracteres, que en UTF-8 pueden pasar de 100 kb). Va ANTES del parser global: body-parser
+  // no vuelve a leer un cuerpo ya leído, así que el global ya no aplica a esta ruta. El exceso
+  // da 413 payload_too_large en el manejador de errores de abajo.
+  app.use('/api/v1/reports/paste', express.json({ limit: config.MAX_PASTE_BYTES }));
+  // Resto de la API; los .eml van por multipart (multer, con su propio límite).
   app.use(express.json({ limit: '100kb' }));
 
   // Sesión de la cookie cbl_session (D-034): si es válida queda en req.auth.
