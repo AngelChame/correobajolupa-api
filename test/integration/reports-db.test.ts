@@ -14,7 +14,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE attachments, report_links, findings, reports, audit_events, sessions, users');
 });
 
 async function crearReporte(datos: { status?: 'queued' | 'limited' | 'completed'; limitedReason?: 'parse_error' | null } = {}) {
@@ -100,5 +100,35 @@ describe('report_links', () => {
     const enlace = { reportId: reporte.id, position: 0, normalizedUrl: 'https://sitio.example/', defangedUrl: 'hxxps://sitio[.]example/' };
     await db.reportLink.create({ data: enlace });
     await expect(db.reportLink.create({ data: enlace })).rejects.toMatchObject({ code: 'P2002' });
+  });
+});
+
+describe('attachments (M2)', () => {
+  const adjunto = (reportId: string, extra: Record<string, unknown> = {}) => ({
+    reportId,
+    position: 0,
+    sizeBytes: 4,
+    sha256: SHA_SINTETICO,
+    scanStatus: 'not_detected' as const,
+    ...extra,
+  });
+
+  it('la posición es única dentro del reporte', async () => {
+    const { reporte } = await crearReporte();
+    await db.attachment.create({ data: adjunto(reporte.id) });
+    await expect(db.attachment.create({ data: adjunto(reporte.id) })).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('rechaza un SHA-256 mal formado y un tamaño negativo', async () => {
+    const { reporte } = await crearReporte();
+    await expect(db.attachment.create({ data: adjunto(reporte.id, { sha256: 'Z'.repeat(64) }) })).rejects.toThrow();
+    await expect(db.attachment.create({ data: adjunto(reporte.id, { sizeBytes: -1 }) })).rejects.toThrow();
+  });
+
+  it('se borran junto con su reporte (cascada)', async () => {
+    const { reporte } = await crearReporte();
+    await db.attachment.create({ data: adjunto(reporte.id, { scanStatus: 'error', scanDetail: 'motivo sintético' }) });
+    await db.report.delete({ where: { id: reporte.id } });
+    expect(await db.attachment.count()).toBe(0);
   });
 });

@@ -113,6 +113,7 @@ describe('GET /reports/{reportId} y /findings', () => {
     const r = await reporte(ana.userId);
     await db.reportLink.createMany({
       data: [
+        { reportId: r.id, position: 2, displayText: 'banco.example', normalizedUrl: 'http://198.51.100.7/', defangedUrl: 'hxxp://198[.]51[.]100[.]7/', domain: '198.51.100.7' },
         { reportId: r.id, position: 1, displayText: null, normalizedUrl: 'http://203.0.113.45/', defangedUrl: 'hxxp://203[.]0[.]113[.]45/', domain: null },
         { reportId: r.id, position: 0, displayText: 'Portal', normalizedUrl: 'https://sitio.example/', defangedUrl: 'hxxps://sitio[.]example/', domain: 'sitio.example' },
       ],
@@ -130,7 +131,9 @@ describe('GET /reports/{reportId} y /findings', () => {
 
     const detalle = Detail.parse((await request(app).get(`/api/v1/reports/${r.id}`).set('Cookie', ana.cookie)).body);
     expect(detalle).toMatchObject({ id: r.id, status: 'queued', findingsCount: 1, limitedReason: null, authentication: null, hasHtml: false });
-    expect(detalle.links.map((l) => l.displayText)).toEqual(['Portal', null]);
+    // Texto visible y dominio salen desactivados (D-017, D-055); la base los guarda crudos.
+    expect(detalle.links.map((l) => l.displayText)).toEqual(['Portal', null, 'banco[.]example']);
+    expect(detalle.links.map((l) => l.domain)).toEqual(['sitio[.]example', null, '198[.]51[.]100[.]7']);
 
     const res = await request(app).get(`/api/v1/reports/${r.id}/findings`).set('Cookie', ana.cookie);
     const hallazgos = FindingList.parse(res.body);

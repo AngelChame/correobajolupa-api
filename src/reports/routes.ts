@@ -11,7 +11,7 @@ import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import type { ReportStorage } from '../storage/storage.js';
 import { createReport, ReportQuotaExceededError } from './create.js';
-import { DETAIL_SELECT, SUMMARY_SELECT, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
+import { DETAIL_SELECT, SUMMARY_SELECT, toAttachmentListDto, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
 import { emlUpload } from './upload.js';
 import { readHtml, readText } from '../viewer/read.js';
 import { renderSafeHtml } from '../viewer/sanitize.js';
@@ -126,6 +126,25 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
     res.json({ items: hallazgos.map(toFindingDto) });
   });
 
+  // Adjuntos (M2): solo metadatos, SHA-256 y resultado de ClamAV; nunca el contenido. Mientras
+  // el análisis no termine → 409. Un reporte failed responde 200 con lista vacía: eso NO quiere
+  // decir "sin adjuntos" (no se llegó a leer el correo); el front mira el estado del reporte.
+  router.get('/:reportId/attachments', conSesion, async (req, res) => {
+    const id = reportIdDe(req, res);
+    if (!id) return;
+    const reporte = await db.report.findFirst({ where: { id, ...visibles(req) }, select: { status: true } });
+    if (!reporte) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return;
+    }
+    if (reporte.status === 'queued' || reporte.status === 'processing') {
+      sendError(req, res, 409, 'report_not_ready', 'El análisis de este reporte todavía no termina.');
+      return;
+    }
+    const adjuntos = await db.attachment.findMany({ where: { reportId: id }, orderBy: { position: 'asc' } });
+    res.json(toAttachmentListDto(adjuntos));
+  });
+
   /**
    * Bytes del correo para el visor, con las mismas reglas de visibilidad (ajeno o no UUID → 404).
    * Mientras el análisis no termine → 409 report_not_ready. Responde y devuelve undefined si no sigue.
@@ -185,7 +204,7 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
       // deleteMany y no delete: si otra petición lo borró justo antes, cuenta 0 y no lanza error.
       const { count } = await tx.report.deleteMany({ where: { id } });
       if (count === 0) return false;
-      // Hallazgos y enlaces se van en cascada. Solo IDs en la auditoría.
+      // Hallazgos, enlaces y adjuntos se van en cascada. Solo IDs en la auditoría.
       await recordAudit(tx, {
         action: AuditAction.reportDelete,
         result: 'success',

@@ -22,7 +22,7 @@ export const CLAVE = 'una-clave-de-prueba-larga';
 const claveHash = await hashPassword(CLAVE);
 
 export async function limpiarBase(): Promise<void> {
-  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE attachments, report_links, findings, reports, audit_events, sessions, users');
 }
 
 /** Carpeta temporal de este proceso de pruebas; se borra completa al salir. */

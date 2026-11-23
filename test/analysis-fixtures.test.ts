@@ -5,8 +5,7 @@ import { analyze } from '../src/analysis/index.js';
 
 // El analizador contra test/fixtures/expected.json (referencia, no verdad: si discrepan, se decide).
 //
-// R7 (adjuntos: doble extensión y tipo inconsistente) es de M2: se quita de las reglas esperadas,
-// y en los casos que SOLO esperan R7 (R7a, R7b) no se comprueba la evidencia hasta entonces.
+// Desde M2 se comprueban las ocho reglas salvo R8 (indicadores confirmados, al final).
 
 const Case = z.looseObject({
   id: z.string(),
@@ -24,17 +23,17 @@ const FIXTURES = new URL('./fixtures/', import.meta.url);
 const expected = Expected.parse(JSON.parse(readFileSync(new URL('expected.json', FIXTURES), 'utf8')));
 const opciones = { institutionalDomains: expected.institutionalDomains };
 
-describe('analyze() contra los fixtures de M1', () => {
+describe('analyze() contra los fixtures', () => {
   it.each(expected.cases.map((c) => [c.id, c] as const))('%s', async (_id, c) => {
     const r = await analyze(readFileSync(new URL(c.file, FIXTURES)), c.input, opciones);
-    const reglasM1 = c.expectedRules.filter((id) => id !== 'R7');
+    const reglas = c.expectedRules;
 
     expect(r.status).toBe(c.status);
     expect(r.limitedReason).toBe(c.limitedReason);
-    expect(r.findings.map((f) => f.ruleId)).toEqual(reglasM1);
+    expect(r.findings.map((f) => f.ruleId)).toEqual(reglas);
 
     // evidence: cada texto aparece en la evidencia cruda de algún hallazgo.
-    if (c.evidence && reglasM1.length > 0) {
+    if (c.evidence && reglas.length > 0) {
       const valores = r.findings.flatMap((f) => f.evidence.map((e) => e.value));
       for (const texto of c.evidence) {
         expect(valores.some((v) => v.includes(texto)), `${c.id}: falta "${texto}" en la evidencia`).toBe(true);

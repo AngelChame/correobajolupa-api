@@ -1,5 +1,6 @@
 import type { Logger } from 'pino';
 import { analyze, defangEmail, defangHost, defangUrlValue, type AnalysisResult, type RawEvidence } from '../analysis/index.js';
+import { scanAttachments, type AttachmentScan, type ScanFn, type ScanSettings } from '../clamav/scan.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
@@ -23,6 +24,10 @@ export type QueueDeps = {
   analysisTimeoutMs?: number;
   /** Solo para pruebas: reemplaza al analizador. */
   analyzeFn?: typeof analyze;
+  /** ClamAV (M2): dónde está y sus límites. */
+  scan: ScanSettings;
+  /** Solo para pruebas: reemplaza al cliente de ClamAV. */
+  scanFn?: ScanFn;
 };
 
 export type Outcome = 'idle' | 'done' | 'retry' | 'failed' | 'discarded';
@@ -71,7 +76,7 @@ const esteIntento = (job: Job) => ({ id: job.id, status: 'processing' as const, 
  * espera y no quedan hallazgos sueltos. Los hallazgos rechazan UPDATE (trigger): se borran los
  * previos y se insertan los nuevos.
  */
-async function save(db: Db, job: Job, result: AnalysisResult): Promise<boolean> {
+async function save(db: Db, job: Job, result: AnalysisResult, scans: readonly AttachmentScan[], priority: AnalysisResult['priority']): Promise<boolean> {
   return db.$transaction(async (tx) => {
     const { count } = await tx.report.updateMany({
       where: esteIntento(job),
@@ -80,7 +85,7 @@ async function save(db: Db, job: Job, result: AnalysisResult): Promise<boolean> 
         limitedReason: result.limitedReason,
         subject: result.subject,
         fromAddress: result.fromAddress,
-        priority: result.priority,
+        priority,
         rulesVersion: result.rulesVersion,
         hasHtml: result.hasHtml,
         authentication: result.authentication ?? Prisma.DbNull,
@@ -92,6 +97,24 @@ async function save(db: Db, job: Job, result: AnalysisResult): Promise<boolean> 
     if (count === 0) return false;
     await tx.finding.deleteMany({ where: { reportId: job.id } });
     await tx.reportLink.deleteMany({ where: { reportId: job.id } });
+    await tx.attachment.deleteMany({ where: { reportId: job.id } });
+    // Solo metadatos: el contenido del adjunto nunca llega a la base.
+    if (result.attachments.length > 0) {
+      await tx.attachment.createMany({
+        data: result.attachments.map((a, i) => ({
+          reportId: job.id,
+          position: a.position,
+          fileName: a.fileName,
+          declaredType: a.declaredType,
+          detectedType: a.detectedType,
+          sizeBytes: a.sizeBytes,
+          sha256: a.sha256,
+          scanStatus: scans[i]?.scanStatus ?? 'error',
+          scanDetail: scans[i]?.scanDetail ?? null,
+          scannedAt: scans[i]?.scannedAt ?? null,
+        })),
+      });
+    }
     if (result.links.length > 0) {
       await tx.reportLink.createMany({
         data: result.links.map((l) => ({
@@ -175,11 +198,29 @@ export async function processNext(deps: QueueDeps): Promise<Outcome> {
     return release(db, job, code, maxAttempts);
   }
 
-  const saved = await save(db, job, result);
+  // ClamAV (M2). Nunca lanza: un fallo deja el adjunto en error y el reporte sigue (P-05).
+  const scans = await scanAttachments(result.attachments, deps.scan, deps.scanFn);
+  // Una firma de antivirus es la señal más fuerte que hay: el reporte sube a prioridad alta.
+  const priority = scans.some((s) => s.scanStatus === 'detected') ? 'high' : result.priority;
+
+  const saved = await save(db, job, result, scans, priority);
   if (!saved) {
     log.info('reporte borrado o retomado por otro intento: se descarta el resultado');
     return 'discarded';
   }
-  log.info({ status: result.status, findings: result.findings.length, links: result.links.length }, 'reporte analizado');
+  // Solo conteos y estados: nunca nombres de archivo, firmas, hashes ni contenido.
+  const scanCounts: Record<string, number> = {};
+  for (const s of scans) scanCounts[s.scanStatus] = (scanCounts[s.scanStatus] ?? 0) + 1;
+  log.info(
+    {
+      status: result.status,
+      findings: result.findings.length,
+      links: result.links.length,
+      attachments: result.attachments.length,
+      attachmentsIgnored: result.attachmentsIgnored,
+      scan: scanCounts,
+    },
+    'reporte analizado',
+  );
   return 'done';
 }

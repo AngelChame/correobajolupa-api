@@ -14,7 +14,13 @@ export const ScanStatus = z
 export const Attachment = z
   .object({
     id: z.uuid(),
-    fileName: z.string().nullable().meta({ description: 'Nombre tal como venía en el correo. Texto hostil: el front lo escapa siempre.' }),
+    fileName: z
+      .string()
+      .nullable()
+      .meta({
+        description:
+          'Nombre del adjunto, saneado: caracteres de control y de dirección de texto escritos como `[U+202E]`, URL desactivadas (D-017) y máximo 255 caracteres. Sigue siendo texto hostil: el front lo escapa siempre.',
+      }),
     declaredType: z.string().nullable().meta({ description: 'Content-Type declarado en el correo.' }),
     detectedType: z.string().nullable().meta({ description: 'Tipo detectado por los primeros bytes (provisional).' }),
     sizeBytes: z.number().int(),

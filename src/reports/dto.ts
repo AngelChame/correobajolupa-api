@@ -1,6 +1,9 @@
 import type { z } from 'zod';
+import { AttachmentList } from '../contract/schemas/attachments.js';
 import { Finding, ReportDetail, type ReportSummary } from '../contract/schemas/reports.js';
-import type { Finding as FindingRow, Report } from '../generated/prisma/client.js';
+import type { Attachment as AttachmentRow, Finding as FindingRow, Report } from '../generated/prisma/client.js';
+import { defangHost } from '../analysis/links.js';
+import { defangLooseText } from '../viewer/text.js';
 
 type SummaryDto = z.infer<typeof ReportSummary>;
 
@@ -64,7 +67,12 @@ export function toDetailDto(row: DetailRow): DetailDto {
     limitedReason: row.limitedReason,
     rulesVersion: row.rulesVersion,
     analyzedAt: row.analyzedAt?.toISOString() ?? null,
-    links: row.links.map((l) => ({ displayText: l.displayText, defangedUrl: l.defangedUrl, domain: l.domain })),
+    // La base guarda texto y dominio crudos (sirven para correlacionar); salen desactivados (D-017, D-055).
+    links: row.links.map((l) => ({
+      displayText: l.displayText === null ? null : defangLooseText(l.displayText),
+      defangedUrl: l.defangedUrl,
+      domain: l.domain === null ? null : defangHost(l.domain),
+    })),
     hasHtml: row.hasHtml,
     authentication: ReportDetail.shape.authentication.parse(row.authentication ?? null),
   };
@@ -81,4 +89,25 @@ export function toFindingDto(row: FindingRow): FindingDto {
     rulesVersion: row.rulesVersion,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * Forma AttachmentList del contrato, validada antes de salir: si una fila no cumple el contrato,
+ * falla con 500 en vez de mandar datos mal formados. Nunca incluye el contenido del adjunto.
+ * fileName es texto hostil (ya saneado al guardarlo): el front lo escapa siempre.
+ */
+export function toAttachmentListDto(rows: readonly AttachmentRow[]): z.infer<typeof AttachmentList> {
+  return AttachmentList.parse({
+    items: rows.map((a) => ({
+      id: a.id,
+      fileName: a.fileName,
+      declaredType: a.declaredType,
+      detectedType: a.detectedType,
+      sizeBytes: a.sizeBytes,
+      sha256: a.sha256,
+      scanStatus: a.scanStatus,
+      scanDetail: a.scanDetail,
+      scannedAt: a.scannedAt?.toISOString() ?? null,
+    })),
+  });
 }

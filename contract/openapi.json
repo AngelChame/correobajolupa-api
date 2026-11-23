@@ -4289,7 +4289,7 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "fileName": {
-            "description": "Nombre tal como venía en el correo. Texto hostil: el front lo escapa siempre.",
+            "description": "Nombre del adjunto, saneado: caracteres de control y de dirección de texto escritos como `[U+202E]`, URL desactivadas (D-017) y máximo 255 caracteres. Sigue siendo texto hostil: el front lo escapa siempre.",
             "type": [
               "string",
               "null"

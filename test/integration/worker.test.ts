@@ -30,7 +30,9 @@ async function subir(app: App, s: Sesion, eml: Buffer): Promise<string> {
 function deps(storage: ReportStorage, extra: Partial<QueueDeps> = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (l: string) => void lineas.push(l) }, 'worker');
-  const d: QueueDeps = { db, storage, logger, institutionalDomains: INST, leaseSeconds: 60, maxAttempts: 3, ...extra };
+  // ClamAV en un puerto donde nadie escucha: los correos sin adjuntos ni lo tocan.
+  const scan = { host: '127.0.0.1', port: 1, timeoutMs: 500, totalBudgetMs: 1000, maxScanBytes: 1024 * 1024, maxScanned: 20 };
+  const d: QueueDeps = { db, storage, logger, institutionalDomains: INST, leaseSeconds: 60, maxAttempts: 3, scan, ...extra };
   return { d, lineas };
 }
 
@@ -52,12 +54,12 @@ describe('worker: queued → analizado', () => {
       findingsCount: 3,
       subject: 'URGENTE: cuenta suspendida',
       fromAddress: 'soporte@banco-ejemplo.example',
-      rulesVersion: 'm1-2026.11',
+      rulesVersion: 'm2-2026.11',
       hasHtml: true,
     });
     expect(detalle.analyzedAt).not.toBeNull();
     expect(detalle.links).toEqual([
-      { displayText: 'https://www.banco-ejemplo.example/cuenta', defangedUrl: 'hxxp://203[.]0[.]113[.]45/cuenta', domain: '203.0.113.45' },
+      { displayText: 'hxxps://www[.]banco-ejemplo[.]example/cuenta', defangedUrl: 'hxxp://203[.]0[.]113[.]45/cuenta', domain: '203[.]0[.]113[.]45' },
     ]);
 
     const hallazgos = FindingList.parse((await request(app).get(`/api/v1/reports/${id}/findings`).set('Cookie', ana.cookie)).body);
