@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { IndicatorType } from '../src/generated/prisma/enums.js';
 import { defangIndicator, INVALID_VALUE, normalizeIndicator } from '../src/indicators/normalize.js';
+import { decodePunycode, encodePunycode, isValidAceLabel } from '../src/indicators/punycode.js';
 
 // Normalización de indicadores (M5): valores del manifiesto del laboratorio y casos hostiles.
 const manifest = JSON.parse(readFileSync(new URL('fixtures/lab/manifest.json', import.meta.url), 'utf8')) as {
@@ -76,6 +77,59 @@ describe('normalizeIndicator', () => {
   it.each(invalidos)('%s %j → inválido, con mensaje fijo que no repite el valor', (type, entrada) => {
     const r = normalizeIndicator(type, entrada);
     expect(r).toEqual({ ok: false, message: INVALID_VALUE[type] });
+  });
+});
+
+// Etiquetas punycode (xn--): domainToASCII cambió entre versiones de Node 24 (24.15 rechaza
+// xn--zz; 24.22 lo acepta). La validación propia debe dar lo mismo en cualquier versión.
+describe('etiquetas xn-- (RFC 3492, sin depender de la versión de Node)', () => {
+  const validos: [IndicatorType, string, string][] = [
+    ['domain', CIRILICA, 'xn--nmina-avisos-4fk.example'],
+    ['domain', 'xn--nmina-avisos-4fk.example', 'xn--nmina-avisos-4fk.example'],
+    ['domain', 'portal.xn--nmina-avisos-4fk.example.', 'portal.xn--nmina-avisos-4fk.example'],
+    ['domain', 'xn--mnchen-3ya.example', 'xn--mnchen-3ya.example'],
+    ['sender', 'RH@xn--nmina-avisos-4fk.example', 'rh@xn--nmina-avisos-4fk.example'],
+    ['url', 'https://xn--nmina-avisos-4fk.example/recibo', 'https://xn--nmina-avisos-4fk.example/recibo'],
+  ];
+  it.each(validos)('%s %j → %s', (type, entrada, value) => {
+    expect(normalizeIndicator(type, entrada)).toMatchObject({ ok: true, value });
+  });
+
+  const invalidos: [IndicatorType, string][] = [
+    ['domain', 'xn--zz.example'],
+    ['domain', 'xn--.example'],
+    ['domain', 'xn--a-.example'],
+    ['domain', 'xn--ñ.example'],
+    // Mayúsculas en la etiqueta ACE: solo se acepta la forma canónica.
+    ['domain', 'XN--NMINA-AVISOS-4FK.example'],
+    ['domain', 'xn--Nmina-avisos-4fk.example'],
+    // Punycode que decodifica a caracteres de control (U+0080 a U+0082).
+    ['domain', 'xn--abc.example'],
+    // Solo ASCII: no es una etiqueta internacionalizada.
+    ['domain', 'xn--abc-.example'],
+    ['domain', 'portal.xn--zz.example'],
+    ['sender', 'rh@xn--zz.example'],
+    ['sender', 'rh@XN--NMINA-AVISOS-4FK.example'],
+  ];
+  it.each(invalidos)('%s %j → inválido, con el mensaje fijo', (type, entrada) => {
+    expect(normalizeIndicator(type, entrada)).toEqual({ ok: false, message: INVALID_VALUE[type] });
+  });
+});
+
+describe('punycode propio', () => {
+  it.each([
+    ['nоmina-avisos', 'nmina-avisos-4fk'],
+    ['münchen', 'mnchen-3ya'],
+    ['bücher', 'bcher-kva'],
+    // RFC 3492, 7.1 (A): árabe (egipcio).
+    ['ليهمابتكلموشعربي؟', 'egbpdaj6bu4bxfgehfvwxn'],
+  ])('%s ↔ %s', (unicode, ace) => {
+    expect(encodePunycode(unicode)).toBe(ace);
+    expect(decodePunycode(ace)).toBe(unicode);
+  });
+
+  it.each(['zz', '99999999999', 'ab!', 'é'])('%j no decodifica o no es canónico', (ace) => {
+    expect(isValidAceLabel(`xn--${ace}`)).toBe(false);
   });
 });
 

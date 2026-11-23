@@ -2,6 +2,7 @@ import { isIP } from 'node:net';
 import { domainToASCII } from 'node:url';
 import { defangEmail, defangHost, defangUrlValue, normalizeLink } from '../analysis/links.js';
 import type { IndicatorType } from '../generated/prisma/enums.js';
+import { isValidAceLabel } from './punycode.js';
 
 /**
  * Normalización de indicadores (M5). El valor propuesto es texto hostil: aquí se convierte en
@@ -43,6 +44,8 @@ const fail = (type: IndicatorType): NormalizeResult => ({ ok: false, message: IN
  * menos dos etiquetas de letras, dígitos y guiones (1 a 63 caracteres) y 253 en total.
  */
 export function normalizeDomainName(input: string): string | null {
+  // Una etiqueta ACE (xn--) se acepta solo en su forma canónica, en minúsculas.
+  if (input.split('.').some((l) => /^xn--/i.test(l.trim()) && l !== l.toLowerCase())) return null;
   let s = input.trim().toLowerCase();
   if (s.endsWith('.')) s = s.slice(0, -1);
   if (s === '' || /[\s/\\@:?#[\]%]/.test(s)) return null;
@@ -51,6 +54,9 @@ export function normalizeDomainName(input: string): string | null {
   if (ascii === '' || ascii.length > MAX_DOMAIN) return null;
   const labels = ascii.split('.');
   if (labels.length < 2 || !labels.every((l) => LABEL.test(l))) return null;
+  // domainToASCII no valida igual las etiquetas xn-- en todas las versiones de Node 24: se
+  // decodifican y se vuelven a codificar con punycode propio (RFC 3492).
+  if (!labels.every(isValidAceLabel)) return null;
   // Termina en número y no es una IPv4: el algoritmo de URL lo trataría como IP inválida.
   if (/^\d+$/.test(labels.at(-1)!)) return null;
   return ascii;
@@ -91,10 +97,11 @@ function normalizeUrl(input: string): NormalizeResult {
 }
 
 function normalizeSender(input: string): NormalizeResult {
-  const s = input.trim().toLowerCase();
+  const s = input.trim();
   const at = s.lastIndexOf('@');
   if (at <= 0) return fail('sender');
-  const local = s.slice(0, at);
+  const local = s.slice(0, at).toLowerCase();
+  // El dominio va tal cual: normalizeDomainName lo pasa a minúsculas y antes revisa sus etiquetas xn--.
   const domain = normalizeDomainName(s.slice(at + 1));
   if (local.length > MAX_LOCAL_PART || !LOCAL_PART.test(local) || !domain) return fail('sender');
   const value = `${local}@${domain}`;
