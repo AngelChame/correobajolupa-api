@@ -213,6 +213,39 @@ Cada candidato trae el resumen del mensaje y una razón por cada ubicación que 
 - M4 guarda remitente y Reply-To tal como los entrega el lector de correo: si un remitente trajera el dominio en Unicode en vez de punycode, no coincidiría con un indicador (que se guarda en punycode).
 - Los candidatos se miden con el conjunto sintético del laboratorio ([`test/fixtures/lab/manifest.json`](test/fixtures/lab/manifest.json)); `test/integration/candidates.test.ts` compara cada indicador con su verdad de referencia.
 
+## Incidentes y comentarios (M6)
+
+Un **incidente** agrupa el trabajo de una investigación: reportes, indicadores (en cualquier estado) y comentarios. Solo analista y administrador (el reportante recibe 403 en todas las rutas).
+
+| Ruta | Qué hace |
+| --- | --- |
+| `POST /incidents` | Crea un incidente en `received` (título de 1 a 120, descripción opcional hasta 2000) |
+| `GET /incidents` | Lista paginada, filtro `status`; los que cambiaron más recientemente primero |
+| `GET /incidents/{id}` | Detalle: reportes (como en `GET /reports`) e indicadores (desactivados) en orden de asociación, comentarios en orden cronológico |
+| `PATCH /incidents/{id}` | Cambia título, descripción (`null` la borra) o estado |
+| `POST /incidents/{id}/reports` y `/indicators` | Asocia un reporte o un indicador (409 si ya está) |
+| `DELETE /incidents/{id}/reports/{reportId}` y `/indicators/{indicatorId}` | Quita la asociación (no borra el reporte ni el indicador) |
+| `POST /incidents/{id}/comments` | Agrega un comentario (1 a 2000). **Los comentarios no se editan ni se borran** |
+
+**Estados y transiciones.** Un paso a la vez: `received → analyzing → contained → closed`. Desde `received`, `analyzing` o `contained` se puede marcar `false_positive`. Saltarse un paso (por ejemplo `received → contained`) responde 409.
+
+| Desde \ hacia | `received` | `analyzing` | `contained` | `closed` | `false_positive` |
+| --- | --- | --- | --- | --- | --- |
+| `received` | sin cambio | sí | 409 | 409 | sí |
+| `analyzing` | 409 | sin cambio | sí | 409 | sí |
+| `contained` | 409 | 409 | sin cambio | sí | sí |
+| `closed` | 409 | 409 | 409 | sin cambio | 409 |
+| `false_positive` | 409 | 409 | 409 | 409 | sin cambio |
+
+- **Final = solo lectura.** En `closed` o `false_positive` no se cambia título, descripción ni estado, ni se asocia, quita o comenta: 409 con un mensaje fijo.
+- **Sin cambio real, 200.** Un `PATCH` con los mismos valores (o el mismo estado) responde 200 sin tocar `updatedAt`. Cualquier cambio real, asociación o comentario sí sube `updatedAt`.
+- **Concurrencia.** El cambio de estado es condicional al estado leído: de dos `PATCH` simultáneos, uno gana y el otro recibe 409.
+- **Borrar un reporte** (a mano o por la retención de 7 días, D-012) lo quita de los incidentes; el incidente se queda y su conteo baja.
+- **Qué no hace.** Cambiar de estado no mueve ni restaura mensajes del laboratorio ni deshace nada: la cuarentena y la restauración son de M7 (`/incidents/{id}/quarantine` y `/actions`, todavía sin implementar).
+- **Cuentas.** Una cuenta que creó un incidente, asoció algo o comentó no se puede borrar (llave `RESTRICT`); solo se desactiva.
+
+**Auditoría.** `incident.create`, `incident.update` (nombres de los campos cambiados y, si cambió, el estado anterior y el nuevo), `incident.report_add`, `incident.report_remove`, `incident.indicator_add`, `incident.indicator_remove` e `incident.comment` (ID y longitud del comentario). También los rechazos 400, 404 y 409 con `metadata.reason`. Nunca el título, la descripción ni el texto de un comentario (P-18), ni un ID mal formado de la URL.
+
 ## Pila completa con el front
 
 El front (repo de Cesar) se construye desde una carpeta al lado de esta (D-031):
