@@ -266,7 +266,7 @@ services:
       IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
     networks: [default, imap-net]
     # Un archivo a la vez: la siembra cuenta mensajes y imap-smoke inserta y borra uno temporal.
-    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run --no-file-parallelism test/imap-smoke.test.ts test/lab-seed-smoke.test.ts"]
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run --no-file-parallelism test/imap-smoke.test.ts test/lab-seed-smoke.test.ts test/mail-imap-smoke.test.ts"]
     depends_on:
       imap:
         condition: service_healthy
