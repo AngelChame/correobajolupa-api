@@ -1,7 +1,7 @@
 # Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API; M1: volumen de reportes y
-# worker de análisis (cola en PostgreSQL, D-054).
+# worker de análisis (cola en PostgreSQL, D-054); M2: ClamAV para los adjuntos.
 # Front (D-031) con el perfil web: docker compose --profile web up -d --build (ver README).
-# Llegan después: ClamAV (M2), Dovecot (M4) y el proxy con HTTPS (nº 28).
+# Llegan después: Dovecot (M4) y el proxy con HTTPS (nº 28).
 # Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
 
 name: correobajolupa
@@ -52,7 +52,7 @@ services:
       context: .
       target: runtime
     # Solo las variables que la API usa hoy; el resto del .env no entra al contenedor.
-    # Se agregan aquí conforme llegan los módulos (ClamAV en M2...).
+    # Se agregan aquí conforme llegan los módulos. ClamAV no: solo lo usa el worker.
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -114,18 +114,47 @@ services:
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
       CLEANUP_INTERVAL_MIN: ${CLEANUP_INTERVAL_MIN:-}
+      # M2: ClamAV por la red clamav-net. Vacíos = valores por defecto de src/config.ts.
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      CLAMAV_TIMEOUT_MS: ${CLAMAV_TIMEOUT_MS:-}
+      CLAMAV_TOTAL_BUDGET_MS: ${CLAMAV_TOTAL_BUDGET_MS:-}
+      CLAMAV_MAX_SCAN_BYTES: ${CLAMAV_MAX_SCAN_BYTES:-}
+      MAX_ATTACHMENTS_SCANNED: ${MAX_ATTACHMENTS_SCANNED:-}
     volumes:
       - *reports-volume
+    # default: la base. clamav-net: solo el worker y ClamAV.
+    networks: [default, clamav-net]
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      # Solo que el contenedor exista, no que esté sano: si ClamAV está caído o todavía cargando
+      # firmas, el worker sigue y marca los adjuntos como error (P-05), nunca como limpios.
+      clamav:
+        condition: service_started
     # La imagen trae el healthcheck HTTP de la API; el worker no escucha en ningún puerto.
     healthcheck:
       disable: true
     # Tiempo para terminar el análisis en curso tras SIGTERM (el worker sale solo a los 25 s).
     stop_grace_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  # Antivirus para los adjuntos (M2, D-018). El worker le manda cada adjunto por TCP (INSTREAM);
+  # nada se escribe a disco. Imagen oficial con versión exacta (1.5.5: parche de seguridad).
+  # Necesita al menos 3 GiB de RAM; el primer arranque descarga las firmas y tarda varios minutos.
+  # Sin puertos publicados y fuera de la red default: solo el worker llega a él. clamav-net no es
+  # "internal" porque freshclam necesita salir a internet para actualizar las firmas.
+  clamav:
+    image: clamav/clamav:1.5.5
+    environment:
+      # Sin milter: aquí solo se usa clamd.
+      CLAMAV_NO_MILTERD: "true"
+    volumes:
+      - clamav-db:/var/lib/clamav
+    networks: [clamav-net]
     restart: unless-stopped
     logging: *logging
 
@@ -187,8 +216,14 @@ services:
       db-test:
         condition: service_healthy
 
+networks:
+  default:
+  clamav-net:
+
 volumes:
   db-data:
   reports-data:
+  # Firmas de ClamAV: sobreviven a reinicios y no se descargan de nuevo cada vez.
+  clamav-db:
   test-node-modules:
   test-prisma-generated:
