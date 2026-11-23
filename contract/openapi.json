@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CorreoBajoLupa API",
-    "version": "0.2.2",
-    "description": "Contrato v0 de M0 (cuentas) y M1 (reportes y hallazgos). Los demás módulos se agregan al llegar a ellos.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces."
+    "version": "0.3.0",
+    "description": "Contrato de M0 (cuentas), M1 (reportes y hallazgos) y M2 a M7 (adjuntos, informe, laboratorio IMAP, indicadores, incidentes, cuarentena y auditoría).\nLas rutas de M2 a M7 se declaran antes de implementarse: hasta que llegue su módulo, la API real no las sirve.\nRegla de congelamiento: solo se agregan cosas (endpoints, campos opcionales, valores nuevos avisados); lo que rompa algo sube de versión y se avisa antes.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces.\nTodo lo que salga de un correo y parezca enlace, dominio, IP o dirección se entrega desactivado (`hxxp`, `[.]`, D-017).\nUn ID mal formado o de un recurso que el usuario no puede ver responde 404 `not_found`; un rol insuficiente en una ruta solo de analista o administrador, 403 `forbidden`."
   },
   "servers": [
     {
@@ -23,6 +23,24 @@
     },
     {
       "name": "Reportes"
+    },
+    {
+      "name": "Laboratorio"
+    },
+    {
+      "name": "Indicadores"
+    },
+    {
+      "name": "Exclusiones"
+    },
+    {
+      "name": "Incidentes"
+    },
+    {
+      "name": "Respuesta"
+    },
+    {
+      "name": "Auditoría"
     }
   ],
   "security": [
@@ -1064,6 +1082,2327 @@
           }
         }
       }
+    },
+    "/reports/{reportId}/attachments": {
+      "get": {
+        "operationId": "listAttachments",
+        "tags": [
+          "Reportes"
+        ],
+        "summary": "Adjuntos con SHA-256 y resultado de ClamAV (M2)",
+        "description": "Nunca se descarga el contenido al navegador. La regla R7 sale en `/findings` como las demás.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reportId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Adjuntos (puede estar vacío).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es del usuario (`not_found`). Se usa 404 y no 403 para no revelar reportes ajenos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El análisis aún no termina: en cola o procesando (`report_not_ready`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/{reportId}/report": {
+      "get": {
+        "operationId": "getReportDocument",
+        "tags": [
+          "Reportes"
+        ],
+        "summary": "Informe con guía de mitigación (M3)",
+        "description": "Texto determinista de plantilla (D-011). Un reporte `failed` responde 200 con la nota `failed` (D-004). La exportación a PDF queda fuera.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reportId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es del usuario (`not_found`). Se usa 404 y no 403 para no revelar reportes ajenos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El análisis aún no termina: en cola o procesando (`report_not_ready`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mailboxes": {
+      "get": {
+        "operationId": "listMailboxes",
+        "tags": [
+          "Laboratorio"
+        ],
+        "summary": "Buzones del laboratorio IMAP (analista o administrador)",
+        "responses": {
+          "200": {
+            "description": "Buzones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mailboxes/{mailboxId}/sync": {
+      "post": {
+        "operationId": "syncMailbox",
+        "tags": [
+          "Laboratorio"
+        ],
+        "summary": "Sincronizar un buzón ahora (analista o administrador)",
+        "description": "Se hace al momento, con un tiempo máximo de 45 s. Si cambió UIDVALIDITY se informa en `uidValidityChanged` (P-12).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sincronización terminada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ya hay una sincronización de ese buzón en curso (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servidor IMAP del laboratorio o ClamAV no responden (`service_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mailboxes/{mailboxId}/simulated-delivery": {
+      "post": {
+        "operationId": "simulatedDelivery",
+        "tags": [
+          "Laboratorio"
+        ],
+        "summary": "Entrega simulada de un reporte `.eml` en un buzón del laboratorio (analista o administrador)",
+        "description": "Solo buzones del laboratorio y reportes subidos como `.eml`; siempre auditada. Usa IMAP `APPEND` con `UIDPLUS` (D-006).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatedDeliveryBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Mensaje insertado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatedDeliveryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido, o el reporte no se subió como `.eml` (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El buzón o el reporte no existe o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servidor IMAP del laboratorio o ClamAV no responden (`service_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/messages": {
+      "get": {
+        "operationId": "listMessages",
+        "tags": [
+          "Laboratorio"
+        ],
+        "summary": "Mensajes indexados, por fecha descendente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "mailboxId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "location",
+            "schema": {
+              "$ref": "#/components/schemas/MessageLocation"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de mensajes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/messages/{messageId}": {
+      "get": {
+        "operationId": "getMessage",
+        "tags": [
+          "Laboratorio"
+        ],
+        "summary": "Detalle de un mensaje indexado (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "messageId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mensaje.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indicators": {
+      "post": {
+        "operationId": "proposeIndicator",
+        "tags": [
+          "Indicadores"
+        ],
+        "summary": "Proponer un indicador (el reportante, solo desde un reporte suyo)",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeIndicatorBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Indicador propuesto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido, valor inválido para el tipo o, para el reportante, falta `reportId` (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El reporte no existe o no es del usuario (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ya existe ese indicador, o el dominio está en la lista de exclusión (P-11) (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listIndicators",
+        "tags": [
+          "Indicadores"
+        ],
+        "summary": "Listar indicadores (el reportante ve los que propuso; analista y administrador, todos)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "$ref": "#/components/schemas/IndicatorStatus"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "$ref": "#/components/schemas/IndicatorType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de indicadores.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndicatorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indicators/{indicatorId}/confirm": {
+      "post": {
+        "operationId": "confirmIndicator",
+        "tags": [
+          "Indicadores"
+        ],
+        "summary": "Confirmar un indicador (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "indicatorId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Indicador confirmado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El indicador ya fue decidido (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indicators/{indicatorId}/dismiss": {
+      "post": {
+        "operationId": "dismissIndicator",
+        "tags": [
+          "Indicadores"
+        ],
+        "summary": "Descartar un indicador (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "indicatorId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Indicador descartado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El indicador ya fue decidido (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indicators/{indicatorId}/candidates": {
+      "get": {
+        "operationId": "listCandidates",
+        "tags": [
+          "Indicadores"
+        ],
+        "summary": "Mensajes candidatos de un indicador confirmado, con sus razones (analista o administrador)",
+        "description": "Sin puntuación: orden por número de razones y luego por fecha (D-019).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "indicatorId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de candidatos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El indicador no está confirmado (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exclusions": {
+      "get": {
+        "operationId": "listExclusions",
+        "tags": [
+          "Exclusiones"
+        ],
+        "summary": "Lista de exclusión (analista o administrador)",
+        "description": "Incluye, como solo lectura (`source: config`, `id: null`), los dominios institucionales de la configuración.",
+        "responses": {
+          "200": {
+            "description": "Exclusiones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExclusionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createExclusion",
+        "tags": [
+          "Exclusiones"
+        ],
+        "summary": "Agregar un dominio a la lista de exclusión (analista o administrador)",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExclusionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Exclusión creada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exclusion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ese dominio ya está excluido (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exclusions/{exclusionId}": {
+      "delete": {
+        "operationId": "deleteExclusion",
+        "tags": [
+          "Exclusiones"
+        ],
+        "summary": "Quitar un dominio de la lista de exclusión (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exclusionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Exclusión borrada."
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Las exclusiones de la configuración no se borran (`conflict`). Hoy no ocurre porque esas no tienen `id`; queda reservado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents": {
+      "post": {
+        "operationId": "createIncident",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Crear un incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIncidentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Incidente creado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listIncidents",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Listar incidentes (analista o administrador)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "$ref": "#/components/schemas/IncidentStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de incidentes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}": {
+      "get": {
+        "operationId": "getIncident",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Detalle de un incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incidente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateIncident",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Cambiar título, descripción o estado (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIncidentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incidente actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Transición de estado inválida, o el incidente ya es final (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/reports": {
+      "post": {
+        "operationId": "addIncidentReport",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Asociar un reporte al incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddIncidentReportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incidente actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `reportId` o no es un UUID (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El incidente o el reporte no existe (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El reporte ya está asociado (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/reports/{reportId}": {
+      "delete": {
+        "operationId": "removeIncidentReport",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Quitar un reporte del incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "reportId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Reporte quitado del incidente."
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El incidente no existe o el reporte no está asociado (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/indicators": {
+      "post": {
+        "operationId": "addIncidentIndicator",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Asociar un indicador al incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddIncidentIndicatorBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incidente actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `indicatorId` o no es un UUID (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El incidente o el indicador no existe (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El indicador ya está asociado (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/indicators/{indicatorId}": {
+      "delete": {
+        "operationId": "removeIncidentIndicator",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Quitar un indicador del incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "indicatorId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Indicador quitado del incidente."
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El incidente no existe o el indicador no está asociado (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/comments": {
+      "post": {
+        "operationId": "createComment",
+        "tags": [
+          "Incidentes"
+        ],
+        "summary": "Comentar un incidente (analista o administrador)",
+        "description": "Los comentarios no se editan ni se borran.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Comentario creado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El incidente ya es final (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/quarantine": {
+      "post": {
+        "operationId": "quarantineMessages",
+        "tags": [
+          "Respuesta"
+        ],
+        "summary": "Poner en cuarentena los mensajes aprobados uno por uno (analista o administrador)",
+        "description": "Aprobación mensaje por mensaje (D-013): solo actúa sobre los IDs enviados con `confirm: true`. Idempotente (P-13); verifica UIDVALIDITY antes de mover (P-12); un resultado por mensaje (P-14).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuarantineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado por mensaje.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El incidente no está en `analyzing` ni en `contained` (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servidor IMAP del laboratorio o ClamAV no responden (`service_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{incidentId}/actions": {
+      "get": {
+        "operationId": "listIncidentActions",
+        "tags": [
+          "Respuesta"
+        ],
+        "summary": "Acciones de cuarentena y restauración de un incidente (analista o administrador)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incidentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acciones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/actions/{actionId}/restore": {
+      "post": {
+        "operationId": "restoreAction",
+        "tags": [
+          "Respuesta"
+        ],
+        "summary": "Restaurar un mensaje puesto en cuarentena (analista o administrador)",
+        "description": "Reverifica el mensaje antes de devolverlo (D-008). Se permite en cualquier estado del incidente. Idempotente (P-13).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "schema": {
+              "type": "string",
+              "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+            },
+            "required": true,
+            "description": "Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de la restauración.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente (solo analista o administrador), o falta o no coincide el token CSRF (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, el ID está mal formado o no se puede ver (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servidor IMAP del laboratorio o ClamAV no responden (`service_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit": {
+      "get": {
+        "operationId": "listAuditEvents",
+        "tags": [
+          "Auditoría"
+        ],
+        "summary": "Eventos de auditoría, por fecha descendente (analista o administrador, solo lectura)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actorId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de eventos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de paginación o filtro inválidos (`validation_error`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No hay sesión activa (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rol insuficiente: solo analista o administrador (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1160,6 +3499,207 @@
         },
         "required": [
           "text"
+        ]
+      },
+      "SimulatedDeliveryBody": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Reporte subido como `.eml`."
+          }
+        },
+        "required": [
+          "reportId"
+        ]
+      },
+      "MessageLocation": {
+        "type": "string",
+        "enum": [
+          "inbox",
+          "quarantine"
+        ]
+      },
+      "ProposeIndicatorBody": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/IndicatorType"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Se normaliza al proponer: dominio en minúsculas y punycode; URL sin query ni fragmento; SHA-256 en minúsculas; remitente en minúsculas."
+          },
+          "reportId": {
+            "description": "Obligatorio para el reportante: solo propone desde un reporte suyo.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ]
+      },
+      "IndicatorType": {
+        "type": "string",
+        "enum": [
+          "domain",
+          "url",
+          "sha256",
+          "sender"
+        ]
+      },
+      "IndicatorStatus": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "confirmed",
+          "dismissed"
+        ]
+      },
+      "CreateExclusionBody": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "CreateIncidentBody": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "IncidentStatus": {
+        "type": "string",
+        "enum": [
+          "received",
+          "analyzing",
+          "contained",
+          "closed",
+          "false_positive"
+        ],
+        "description": "Transiciones: `received → analyzing → contained → closed`; desde cualquiera no cerrado → `false_positive`. `closed` y `false_positive` son finales. Una transición inválida responde 409 `conflict`."
+      },
+      "UpdateIncidentBody": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          }
+        }
+      },
+      "AddIncidentReportBody": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "reportId"
+        ]
+      },
+      "AddIncidentIndicatorBody": {
+        "type": "object",
+        "properties": {
+          "indicatorId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "indicatorId"
+        ]
+      },
+      "CreateCommentBody": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "body"
+        ]
+      },
+      "QuarantineRequest": {
+        "type": "object",
+        "properties": {
+          "messageIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "uniqueItems": true,
+            "description": "Mensajes aprobados uno por uno (D-013), de 1 a 50, sin repetir."
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "messageIds",
+          "confirm"
+        ],
+        "description": "La API solo actúa sobre los IDs enviados y con `confirm: true`."
+      },
+      "RestoreRequest": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "confirm"
         ]
       },
       "Session": {
@@ -1273,8 +3813,10 @@
           "payload_too_large",
           "unsupported_media_type",
           "rate_limited",
-          "internal_error"
-        ]
+          "internal_error",
+          "service_unavailable"
+        ],
+        "description": "`service_unavailable` (503): el servidor IMAP del laboratorio o ClamAV no responden."
       },
       "UserList": {
         "type": "object",
@@ -1595,6 +4137,7 @@
         "type": "object",
         "properties": {
           "displayText": {
+            "description": "Texto visible del enlace. Se entrega desactivado si parece enlace, dominio, IP o dirección (por ejemplo `hxxps://dominio[.]com`, D-017); el front lo escapa siempre.",
             "type": [
               "string",
               "null"
@@ -1605,6 +4148,7 @@
             "description": "Siempre desactivada, por ejemplo `hxxp://dominio[.]com` (D-017). Nunca se visita."
           },
           "domain": {
+            "description": "Dominio o IP del destino, desactivado (por ejemplo `dominio[.]com`, D-017).",
             "type": [
               "string",
               "null"
@@ -1708,6 +4252,1522 @@
           "value"
         ],
         "additionalProperties": false
+      },
+      "AttachmentList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "fileName": {
+            "description": "Nombre tal como venía en el correo. Texto hostil: el front lo escapa siempre.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "declaredType": {
+            "description": "Content-Type declarado en el correo.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detectedType": {
+            "description": "Tipo detectado por los primeros bytes (provisional).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 en hexadecimal, 64 caracteres en minúsculas."
+          },
+          "scanStatus": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "scanDetail": {
+            "description": "Firma detectada, o motivo de `unsupported` o `error`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "declaredType",
+          "detectedType",
+          "sizeBytes",
+          "sha256",
+          "scanStatus",
+          "scanDetail",
+          "scannedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ScanStatus": {
+        "type": "string",
+        "enum": [
+          "not_detected",
+          "detected",
+          "unsupported",
+          "error"
+        ],
+        "description": "Resultado de ClamAV (D-018). `not_detected` no significa \"seguro\". `error`: ClamAV falló o no respondió; **nunca** se interpreta como limpio."
+      },
+      "ReportDocument": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "rulesVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "guideVersion": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReportStatus"
+          },
+          "limitedReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LimitedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Priority"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "headline": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "headline",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuideFinding"
+            }
+          },
+          "indicators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "$ref": "#/components/schemas/IndicatorType"
+                },
+                "displayValue": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "displayValue"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Desactivados (D-017)."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "description": "Texto hostil: el front lo escapa siempre.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "SHA-256 en hexadecimal, 64 caracteres en minúsculas."
+                },
+                "scanStatus": {
+                  "$ref": "#/components/schemas/ScanStatus"
+                }
+              },
+              "required": [
+                "fileName",
+                "sha256",
+                "scanStatus"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "$ref": "#/components/schemas/ReportNoteKind"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "reportId",
+          "generatedAt",
+          "rulesVersion",
+          "guideVersion",
+          "status",
+          "limitedReason",
+          "priority",
+          "summary",
+          "findings",
+          "indicators",
+          "attachments",
+          "notes"
+        ],
+        "additionalProperties": false,
+        "description": "Texto de plantilla, determinista; nada se genera en ejecución (D-011)."
+      },
+      "GuideFinding": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "$ref": "#/components/schemas/RuleId"
+          },
+          "title": {
+            "type": "string"
+          },
+          "whatItMeans": {
+            "type": "string"
+          },
+          "whyRisky": {
+            "type": "string"
+          },
+          "whatToDo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "forAnalyst": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItem"
+            },
+            "description": "Desactivada (D-017)."
+          }
+        },
+        "required": [
+          "ruleId",
+          "title",
+          "whatItMeans",
+          "whyRisky",
+          "whatToDo",
+          "forAnalyst",
+          "evidence"
+        ],
+        "additionalProperties": false
+      },
+      "ReportNoteKind": {
+        "type": "string",
+        "enum": [
+          "limited",
+          "no_findings",
+          "failed",
+          "auth_informative"
+        ],
+        "description": "`no_findings` dice que sin hallazgos no significa seguro. `failed` dice que el análisis no terminó (D-004)."
+      },
+      "MailboxList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mailbox"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "Mailbox": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "label": {
+            "$ref": "#/components/schemas/MailboxLabel"
+          },
+          "address": {
+            "type": "string"
+          },
+          "lastSyncAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSyncStatus": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "address",
+          "lastSyncAt",
+          "lastSyncStatus",
+          "messageCount"
+        ],
+        "additionalProperties": false
+      },
+      "MailboxLabel": {
+        "type": "string",
+        "enum": [
+          "student",
+          "teacher",
+          "staff"
+        ],
+        "description": "Estudiante, docente o administrativo (D-015)."
+      },
+      "SyncStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "error",
+          "never"
+        ]
+      },
+      "SyncResult": {
+        "type": "object",
+        "properties": {
+          "mailboxId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "fetched": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "added": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "uidValidityChanged": {
+            "type": "boolean",
+            "description": "P-12: cambió UIDVALIDITY; hay que resincronizar."
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "fetched",
+          "added",
+          "updated",
+          "uidValidityChanged",
+          "finishedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SimulatedDeliveryResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageSummary"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "MessageSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mailboxId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "location": {
+            "$ref": "#/components/schemas/MessageLocation"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "uidValidity": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "subject": {
+            "description": "Texto de correo: el front lo escapa siempre.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fromAddress": {
+            "description": "Texto de correo: el front lo escapa siempre.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasAttachments": {
+            "type": "boolean"
+          },
+          "linksCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "quarantined": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "mailboxId",
+          "location",
+          "uid",
+          "uidValidity",
+          "subject",
+          "fromAddress",
+          "date",
+          "hasAttachments",
+          "linksCount",
+          "quarantined"
+        ],
+        "additionalProperties": false
+      },
+      "MessageList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageSummary"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "MessageDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mailboxId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "location": {
+            "$ref": "#/components/schemas/MessageLocation"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "uidValidity": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "subject": {
+            "description": "Texto de correo: el front lo escapa siempre.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fromAddress": {
+            "description": "Texto de correo: el front lo escapa siempre.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasAttachments": {
+            "type": "boolean"
+          },
+          "linksCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "quarantined": {
+            "type": "boolean"
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportLink"
+            },
+            "description": "Desactivados (D-017)."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          },
+          "authentication": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "spf": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "none",
+                      "unknown"
+                    ]
+                  },
+                  "dkim": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "none",
+                      "unknown"
+                    ]
+                  },
+                  "dmarc": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "none",
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": [
+                  "spf",
+                  "dkim",
+                  "dmarc"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo informativo; nunca suma puntaje (D-016)."
+          }
+        },
+        "required": [
+          "id",
+          "mailboxId",
+          "location",
+          "uid",
+          "uidValidity",
+          "subject",
+          "fromAddress",
+          "date",
+          "hasAttachments",
+          "linksCount",
+          "quarantined",
+          "links",
+          "attachments",
+          "authentication"
+        ],
+        "additionalProperties": false
+      },
+      "Indicator": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "$ref": "#/components/schemas/IndicatorType"
+          },
+          "displayValue": {
+            "type": "string",
+            "description": "Valor normalizado y desactivado (D-017), por ejemplo `dominio[.]com`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/IndicatorStatus"
+          },
+          "reportId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "displayValue",
+          "status",
+          "reportId",
+          "proposedBy",
+          "decidedBy",
+          "createdAt",
+          "decidedAt"
+        ],
+        "additionalProperties": false
+      },
+      "UserRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "IndicatorList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Indicator"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "CandidateList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageSummary"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateReason"
+            }
+          }
+        },
+        "required": [
+          "message",
+          "reasons"
+        ],
+        "additionalProperties": false,
+        "description": "Mensaje candidato con la razón de cada coincidencia, sin puntuación (D-019). Compartir un dominio no confirma una campaña: decide una persona. Orden: número de razones y luego fecha."
+      },
+      "CandidateReason": {
+        "type": "object",
+        "properties": {
+          "indicatorId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IndicatorType"
+          },
+          "location": {
+            "$ref": "#/components/schemas/MatchLocation"
+          },
+          "matchedValue": {
+            "type": "string",
+            "description": "Valor que coincidió, desactivado (D-017)."
+          }
+        },
+        "required": [
+          "indicatorId",
+          "kind",
+          "location",
+          "matchedValue"
+        ],
+        "additionalProperties": false
+      },
+      "MatchLocation": {
+        "type": "string",
+        "enum": [
+          "link",
+          "from",
+          "reply_to",
+          "attachment"
+        ]
+      },
+      "ExclusionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Exclusion"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "Exclusion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nulo si viene de la configuración (dominios institucionales, solo lectura)."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Desactivado (D-017)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/ExclusionSource"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "source",
+          "reason",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExclusionSource": {
+        "type": "string",
+        "enum": [
+          "config",
+          "manual"
+        ]
+      },
+      "IncidentDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "reportsCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "indicatorsCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportSummary"
+            }
+          },
+          "indicators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Indicator"
+            }
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "reportsCount",
+          "indicatorsCount",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "description",
+          "reports",
+          "indicators",
+          "comments"
+        ],
+        "additionalProperties": false
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "body",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "description": "Los comentarios no se editan ni se borran."
+      },
+      "IncidentList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentSummary"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "reportsCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "indicatorsCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "reportsCount",
+          "indicatorsCount",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "QuarantineResponse": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "messageId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "outcome": {
+                  "$ref": "#/components/schemas/QuarantineOutcome"
+                },
+                "actionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "detail": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "messageId",
+                "outcome",
+                "actionId",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "incidentId",
+          "results"
+        ],
+        "additionalProperties": false,
+        "description": "Un resultado por mensaje."
+      },
+      "QuarantineOutcome": {
+        "type": "string",
+        "enum": [
+          "quarantined",
+          "already_quarantined",
+          "uidvalidity_mismatch",
+          "not_found",
+          "error"
+        ],
+        "description": "`already_quarantined`: repetir no mueve nada (P-13). `uidvalidity_mismatch`: no actúa y el buzón queda para resincronizar (P-12). `error`: no se movió, por ejemplo por un corte de conexión (P-14)."
+      },
+      "ActionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "Action": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "incidentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ActionType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionStatus"
+          },
+          "originalLocation": {
+            "$ref": "#/components/schemas/ImapLocation"
+          },
+          "newLocation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImapLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "incidentId",
+          "messageId",
+          "type",
+          "status",
+          "originalLocation",
+          "newLocation",
+          "actor",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ActionType": {
+        "type": "string",
+        "enum": [
+          "quarantine",
+          "restore"
+        ]
+      },
+      "ActionStatus": {
+        "type": "string",
+        "enum": [
+          "done",
+          "failed"
+        ]
+      },
+      "ImapLocation": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "uidValidity": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "folder",
+          "uid",
+          "uidValidity"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreResponse": {
+        "type": "object",
+        "properties": {
+          "actionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/RestoreOutcome"
+          },
+          "restoreActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "actionId",
+          "outcome",
+          "restoreActionId",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreOutcome": {
+        "type": "string",
+        "enum": [
+          "restored",
+          "already_restored",
+          "uidvalidity_mismatch",
+          "not_found",
+          "error"
+        ],
+        "description": "`already_restored`: repetir no mueve nada (P-13)."
+      },
+      "AuditList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "action": {
+            "type": "string",
+            "description": "Por ejemplo `report.create`, `quarantine.execute`, `system.cleanup`."
+          },
+          "result": {
+            "$ref": "#/components/schemas/AuditResult"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nulo en tareas del sistema."
+          },
+          "targetType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targetId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "Nunca asunto, cuerpo ni direcciones completas."
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "action",
+          "result",
+          "actor",
+          "targetType",
+          "targetId",
+          "requestId",
+          "metadata"
+        ],
+        "additionalProperties": false
+      },
+      "AuditResult": {
+        "type": "string",
+        "enum": [
+          "success",
+          "failure",
+          "denied"
+        ]
       }
     },
     "securitySchemes": {

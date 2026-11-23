@@ -18,8 +18,12 @@ export const ErrorCode = z
     'unsupported_media_type',
     'rate_limited',
     'internal_error',
+    'service_unavailable',
   ])
-  .meta({ id: 'ErrorCode' });
+  .meta({
+    id: 'ErrorCode',
+    description: '`service_unavailable` (503): el servidor IMAP del laboratorio o ClamAV no responden.',
+  });
 
 export const ErrorResponse = z
   .object({
@@ -53,3 +57,20 @@ export const csrfHeader = z.object({
     description: 'Token CSRF que entrega `GET /auth/me` y las respuestas de entrada. Obligatorio en peticiones que modifican datos.',
   }),
 });
+
+/** Referencia breve a una persona usuaria (quién propuso, decidió, comentó o actuó). */
+export const UserRef = z.object({ id: z.uuid(), displayName: z.string() }).meta({ id: 'UserRef' });
+
+/** Lista paginada con la forma de siempre: `{items, page, pageSize, total}`. */
+export const pageOf = <T extends z.ZodType>(item: T, id: string) =>
+  z
+    .object({
+      items: z.array(item),
+      page: z.number().int(),
+      pageSize: z.number().int(),
+      total: z.number().int(),
+    })
+    .meta({ id });
+
+/** SHA-256 en hexadecimal (minúsculas). */
+export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/).meta({ description: 'SHA-256 en hexadecimal, 64 caracteres en minúsculas.' });

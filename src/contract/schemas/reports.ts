@@ -40,9 +40,15 @@ export const ReportSummary = z
 
 export const ReportLink = z
   .object({
-    displayText: z.string().nullable(),
+    displayText: z
+      .string()
+      .nullable()
+      .meta({
+        description:
+          'Texto visible del enlace. Se entrega desactivado si parece enlace, dominio, IP o dirección (por ejemplo `hxxps://dominio[.]com`, D-017); el front lo escapa siempre.',
+      }),
     defangedUrl: z.string().meta({ description: 'Siempre desactivada, por ejemplo `hxxp://dominio[.]com` (D-017). Nunca se visita.' }),
-    domain: z.string().nullable(),
+    domain: z.string().nullable().meta({ description: 'Dominio o IP del destino, desactivado (por ejemplo `dominio[.]com`, D-017).' }),
   })
   .meta({ id: 'ReportLink' });
 
