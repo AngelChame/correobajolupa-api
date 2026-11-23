@@ -6,12 +6,14 @@ import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
 import { PageQuery } from '../contract/schemas/common.js';
-import { PasteBody, ReportStatus } from '../contract/schemas/reports.js';
+import { ReportDocument } from '../contract/schemas/report-document.js';
+import { PasteBody, ReportDetail, ReportStatus } from '../contract/schemas/reports.js';
 import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import type { ReportStorage } from '../storage/storage.js';
+import { buildReportDocument } from '../report/build.js';
 import { createReport, ReportQuotaExceededError } from './create.js';
-import { DETAIL_SELECT, SUMMARY_SELECT, toAttachmentListDto, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
+import { DETAIL_SELECT, REPORT_DOCUMENT_SELECT, SUMMARY_SELECT, toAttachmentListDto, toDetailDto, toFindingDto, toSummaryDto } from './dto.js';
 import { emlUpload } from './upload.js';
 import { readHtml, readText } from '../viewer/read.js';
 import { renderSafeHtml } from '../viewer/sanitize.js';
@@ -143,6 +145,35 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
     }
     const adjuntos = await db.attachment.findMany({ where: { reportId: id }, orderBy: { position: 'asc' } });
     res.json(toAttachmentListDto(adjuntos));
+  });
+
+  // Informe con guía (M3, D-011, D-014): texto de plantilla armado con lo que ya está en la base.
+  // queued/processing → 409; failed → 200 con la nota failed (D-004). En los registros solo van
+  // ID, estado y conteos: nunca textos del informe, nombres de archivo ni indicadores (P-18).
+  router.get('/:reportId/report', conSesion, async (req, res) => {
+    const id = reportIdDe(req, res);
+    if (!id) return;
+    const fila = await db.report.findFirst({ where: { id, ...visibles(req) }, select: REPORT_DOCUMENT_SELECT });
+    if (!fila) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return;
+    }
+    if (fila.status === 'queued' || fila.status === 'processing') {
+      sendError(req, res, 409, 'report_not_ready', 'El análisis de este reporte todavía no termina.');
+      return;
+    }
+    const informe = ReportDocument.parse(
+      buildReportDocument(
+        { ...fila, authentication: ReportDetail.shape.authentication.parse(fila.authentication ?? null) },
+        new Date(),
+        { onUnknownRule: (ruleId) => req.log.warn({ reportId: id, ruleId }, 'hallazgo sin guía: se usa el texto genérico') },
+      ),
+    );
+    req.log.info(
+      { reportId: id, status: informe.status, findings: informe.findings.length, indicators: informe.indicators.length, attachments: informe.attachments.length },
+      'informe generado',
+    );
+    res.json(informe);
   });
 
   /**
