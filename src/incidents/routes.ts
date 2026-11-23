@@ -1,13 +1,13 @@
 import express, { type Request, type Response } from 'express';
 import { AuditAction, recordAudit } from '../audit.js';
 import { requireRole } from '../auth/roles.js';
-import { AddIncidentIndicatorBody, AddIncidentReportBody, CreateIncidentBody, IncidentQuery, UpdateIncidentBody } from '../contract/schemas/incidents.js';
+import { AddIncidentIndicatorBody, AddIncidentReportBody, CreateCommentBody, CreateIncidentBody, IncidentQuery, UpdateIncidentBody } from '../contract/schemas/incidents.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import { isUuid, uuidParam } from '../lab/routes.js';
-import { INCIDENT_DETAIL_SELECT, INCIDENT_SUMMARY_SELECT, toIncidentDetailDto, toIncidentSummaryDto } from './dto.js';
+import { COMMENT_SELECT, INCIDENT_DETAIL_SELECT, INCIDENT_SUMMARY_SELECT, toCommentDto, toIncidentDetailDto, toIncidentSummaryDto } from './dto.js';
 import { canTransition, FINAL_STATUSES, isFinal } from './status.js';
 
 export type IncidentsDeps = { db: Db };
@@ -367,6 +367,58 @@ export function createIncidentsRouter({ db }: IncidentsDeps) {
       res.status(204).end();
     };
   }
+
+  /**
+   * Comentarios: solo se crean (no hay rutas para editarlos ni borrarlos). Suben updatedAt del
+   * incidente. La auditoría guarda solo la longitud, nunca el texto (P-18).
+   */
+  router.post('/incidents/:incidentId/comments', analista, async (req, res) => {
+    const action = AuditAction.incidentComment;
+    const paramId = isUuid(req.params.incidentId) ? req.params.incidentId : undefined;
+    if (!CreateCommentBody.safeParse(req.body).success) await auditRejection(db, req, action, { reason: 'invalid_body', incidentId: paramId });
+    const body = parseBody(CreateCommentBody, req, res);
+    if (!body) return;
+    if (!paramId) await auditRejection(db, req, action, { reason: 'not_found' });
+    const id = uuidParam(req, res, 'incidentId', INCIDENT_NOT_FOUND);
+    if (!id) return;
+
+    const incidente = await db.incident.findUnique({ where: { id }, select: { status: true } });
+    if (!incidente) {
+      await auditRejection(db, req, action, { reason: 'not_found', incidentId: id });
+      sendError(req, res, 404, 'not_found', INCIDENT_NOT_FOUND);
+      return;
+    }
+    if (isFinal(incidente.status)) {
+      await auditRejection(db, req, action, { reason: 'final', incidentId: id });
+      sendError(req, res, 409, 'conflict', INCIDENT_FINAL);
+      return;
+    }
+
+    const actor = req.auth!.user;
+    let comentario;
+    try {
+      comentario = await db.$transaction(async (tx) => {
+        await tocarSiAbierto(tx, id);
+        const creado = await tx.incidentComment.create({ data: { incidentId: id, authorId: actor.id, body: body.body }, select: COMMENT_SELECT });
+        await recordAudit(tx, {
+          action,
+          result: 'success',
+          requestId: String(req.id),
+          actorId: actor.id,
+          targetType: 'incident',
+          targetId: id,
+          metadata: { commentId: creado.id, length: body.body.length },
+        });
+        return creado;
+      });
+    } catch (error) {
+      if (!(error instanceof Rechazo)) throw error;
+      await auditRejection(db, req, action, { reason: 'final', incidentId: id });
+      sendError(req, res, 409, 'conflict', INCIDENT_FINAL);
+      return;
+    }
+    res.status(201).json(toCommentDto(comentario));
+  });
 
   router.post('/incidents/:incidentId/reports', analista, asociar('report'));
   router.delete('/incidents/:incidentId/reports/:reportId', analista, quitar('report'));

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { IncidentDetail, IncidentList, IncidentStatus } from '../../src/contract/schemas/incidents.js';
+import { Comment, IncidentDetail, IncidentList, IncidentStatus } from '../../src/contract/schemas/incidents.js';
 import { crearApp, db, entrarComo, limpiarBase, type Sesion } from './support.js';
 
 // Incidentes (M6): crear, listar, ver, actualizar, asociar y comentar. Solo analista y administrador.
@@ -25,6 +25,8 @@ const asociar = (a: App, s: Sesion, id: string, tipo: Tipo, body: Record<string,
   request(a).post(`/api/v1/incidents/${id}/${tipo}`).set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf).send(body);
 const quitar = (a: App, s: Sesion, id: string, tipo: Tipo, targetId: string) =>
   request(a).delete(`/api/v1/incidents/${id}/${tipo}/${targetId}`).set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf);
+const comentar = (a: App, s: Sesion, id: string, body: string) =>
+  request(a).post(`/api/v1/incidents/${id}/comments`).set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf).send({ body });
 const campo = (tipo: Tipo) => (tipo === 'reports' ? 'reportId' : 'indicatorId');
 
 /** Reporte mínimo con un hallazgo (directo en la base: aquí no importa el análisis). */
@@ -438,5 +440,70 @@ describe('asociar y quitar reportes e indicadores', () => {
     expect(inc.reportsCount).toBe(1);
     expect(inc.reports.map((r) => r.id)).toEqual([r2]);
     expect(IncidentList.parse((await listar(a, analista).expect(200)).body).items[0]).toMatchObject({ id, reportsCount: 1 });
+  });
+});
+
+describe('comentarios', () => {
+  it('201 con autor; el detalle los trae en orden cronológico; sube updatedAt; auditoría solo con la longitud', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const admin = await entrarComo(a, 'admin', 'admin@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const antes = (await db.incident.findUniqueOrThrow({ where: { id } })).updatedAt;
+
+    const r1 = await comentar(a, analista, id, 'Primer <b>comentario</b>');
+    expect(r1.status, JSON.stringify(r1.body)).toBe(201);
+    const c1 = Comment.parse(r1.body);
+    expect(c1).toMatchObject({ body: 'Primer <b>comentario</b>', author: { id: analista.userId, displayName: 'Persona analyst' } });
+    const c2 = Comment.parse((await comentar(a, admin, id, 'Segundo').expect(201)).body);
+    expect((await db.incident.findUniqueOrThrow({ where: { id } })).updatedAt.getTime()).toBeGreaterThan(antes.getTime());
+
+    const inc = IncidentDetail.parse((await ver(a, analista, id).expect(200)).body);
+    expect(inc.comments.map((c) => c.id)).toEqual([c1.id, c2.id]);
+    expect(inc.comments[1]!.author).toEqual({ id: admin.userId, displayName: 'Persona admin' });
+
+    const e = await db.auditEvent.findFirstOrThrow({ where: { action: 'incident.comment', actorId: analista.userId } });
+    expect(e).toMatchObject({ result: 'success', targetType: 'incident', targetId: id, metadata: { commentId: c1.id, length: 'Primer <b>comentario</b>'.length } });
+  });
+
+  it('400 con cuerpo vacío o de más de 2000; 404 incidente inexistente o mal formado; 409 si es final', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    for (const body of [{}, { body: '' }, { body: 'c'.repeat(2001) }, { body: 3 }]) {
+      const res = await request(a).post(`/api/v1/incidents/${id}/comments`).set('Cookie', analista.cookie).set('X-CSRF-Token', analista.csrf).send(body);
+      expect(res.status, JSON.stringify(body).slice(0, 40)).toBe(400);
+    }
+    await comentar(a, analista, id, 'c'.repeat(2000)).expect(201);
+    for (const malo of [UUID_INEXISTENTE, 'no-es-uuid']) {
+      const res = await comentar(a, analista, malo, 'hola');
+      expect(res.status).toBe(404);
+      expect(res.body.message).toBe('El incidente no existe.');
+    }
+    for (const final of ['closed', 'false_positive'] as const) {
+      await db.incident.update({ where: { id }, data: { status: final } });
+      const res = await comentar(a, analista, id, 'tarde');
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ code: 'conflict', message: FINAL });
+    }
+    expect(await db.incidentComment.count()).toBe(1);
+  });
+
+  it('no existen rutas para editar ni borrar comentarios (404)', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const c = Comment.parse((await comentar(a, analista, id, 'original').expect(201)).body);
+    const base = `/api/v1/incidents/${id}/comments`;
+    for (const res of [
+      await request(a).patch(`${base}/${c.id}`).set('Cookie', analista.cookie).set('X-CSRF-Token', analista.csrf).send({ body: 'cambiado' }),
+      await request(a).put(`${base}/${c.id}`).set('Cookie', analista.cookie).set('X-CSRF-Token', analista.csrf).send({ body: 'cambiado' }),
+      await request(a).delete(`${base}/${c.id}`).set('Cookie', analista.cookie).set('X-CSRF-Token', analista.csrf),
+      await request(a).delete(base).set('Cookie', analista.cookie).set('X-CSRF-Token', analista.csrf),
+      await request(a).get(`${base}/${c.id}`).set('Cookie', analista.cookie),
+    ]) {
+      expect(res.status).toBe(404);
+    }
+    expect((await db.incidentComment.findUniqueOrThrow({ where: { id: c.id } })).body).toBe('original');
   });
 });
