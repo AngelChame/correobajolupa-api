@@ -420,7 +420,7 @@ model Indicator {
   reportId     String?         @map("report_id") @db.Uuid
   report       Report?         @relation(fields: [reportId], references: [id], onDelete: SetNull)
   proposedById String          @map("proposed_by_id") @db.Uuid
-  proposedBy   User            @relation("IndicatorProposedBy", fields: [proposedById], references: [id], onDelete: Cascade)
+  proposedBy   User            @relation("IndicatorProposedBy", fields: [proposedById], references: [id], onDelete: Restrict)
   decidedById  String?         @map("decided_by_id") @db.Uuid
   decidedBy    User?           @relation("IndicatorDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   /// Nota de quien propone (texto libre: se escapa siempre y no va a los registros).

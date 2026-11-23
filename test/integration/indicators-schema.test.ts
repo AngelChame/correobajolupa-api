@@ -73,6 +73,17 @@ describe('migración de indicadores', () => {
   });
 });
 
+describe('quién propuso (Restrict)', () => {
+  it('no se puede borrar la cuenta de quien propuso un indicador; sin indicadores, sí', async () => {
+    const u = await persona();
+    const i = await indicador(u.id);
+    await expect(db.user.delete({ where: { id: u.id } })).rejects.toThrow();
+    expect(await db.indicator.count()).toBe(1);
+    await db.indicator.delete({ where: { id: i.id } });
+    await expect(db.user.delete({ where: { id: u.id } })).resolves.toBeTruthy();
+  });
+});
+
 describe('migración de exclusiones', () => {
   it('dominio único, en minúsculas y de 1 a 253 caracteres', async () => {
     const u = await persona();
