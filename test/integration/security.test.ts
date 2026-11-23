@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { Session, User, UserList } from '../../src/contract/schemas/auth.js';
 import { ErrorResponse } from '../../src/contract/schemas/common.js';
+import { ReportSummary } from '../../src/contract/schemas/reports.js';
 import { CLAVE, crearApp, db, entrarComo, limpiarBase, tokenDe } from './support.js';
 
 /**
@@ -224,5 +226,49 @@ describe('registros (D-036) en /users', () => {
     for (const secreto of ['MARCADOR_CLAVE_ANA_123', CLAVE, admin.token, admin.csrf, ana.token, ana.csrf, 'MARCADOR_CSRF_MALO']) {
       expect(todo).not.toContain(secreto);
     }
+  });
+});
+
+describe('registros y auditoría (D-036) en /reports: nada del correo', () => {
+  it('ni asunto, ni remitente, ni cuerpo, ni texto pegado, ni nombre del archivo', async () => {
+    // R1 (sintético) con marcadores agregados al vuelo: el fixture en disco no cambia.
+    const original = readFileSync(new URL('../fixtures/emails/R1-reply-to-distinto.eml', import.meta.url), 'latin1');
+    const eml = Buffer.from(
+      original.replace('Subject: Verifica tu cuenta', 'Subject: MARCADOR_ASUNTO_R1') + 'MARCADOR_CUERPO_R1\r\n',
+      'latin1',
+    );
+    expect(eml.toString('latin1')).toContain('MARCADOR_CUERPO_R1');
+    const remitente = 'soporte@banco-ejemplo.example';
+
+    const { app, lineas } = crearApp({ MAX_EML_BYTES: String(eml.byteLength + 10) });
+    const ana = await entrarComo(app, 'reporter', 'ana@ejemplo.invalid');
+    const analista = await entrarComo(app, 'analyst', 'analista@ejemplo.invalid');
+    const post = (ruta: string) => request(app).post(`/api/v1/reports${ruta}`).set('Cookie', ana.cookie).set('X-CSRF-Token', ana.csrf);
+
+    const subida = await post('').attach('file', eml, { filename: 'MARCADOR_NOMBRE_ARCHIVO.eml' });
+    expect(subida.status).toBe(202);
+    const id = ReportSummary.parse(subida.body).id;
+    expect((await post('/paste').send({ text: `Subject: MARCADOR_ASUNTO_PEGADO\n\nMARCADOR_PEGADO ${remitente}` })).status).toBe(202);
+    // Errores: 415, 413 y 400 con marcadores en el nombre, el cuerpo y el nombre del campo.
+    expect((await post('').attach('file', eml, { filename: 'MARCADOR_NOMBRE_415.txt', contentType: 'text/plain' })).status).toBe(415);
+    expect((await post('').attach('file', Buffer.concat([eml, eml]), { filename: 'MARCADOR_NOMBRE_413.eml' })).status).toBe(413);
+    expect((await post('').field('MARCADOR_CAMPO', 'MARCADOR_VALOR').attach('file', eml, { filename: 'c.eml' })).status).toBe(400);
+    expect((await post('/paste').send({ text: '', MARCADOR_EXTRA: 'MARCADOR_VALOR_JSON' })).status).toBe(400);
+    // Consultas y borrado.
+    await request(app).get('/api/v1/reports').set('Cookie', analista.cookie);
+    await request(app).get(`/api/v1/reports/${id}`).set('Cookie', analista.cookie);
+    await request(app).get(`/api/v1/reports/${id}/findings`).set('Cookie', analista.cookie);
+    expect((await request(app).delete(`/api/v1/reports/${id}`).set('Cookie', ana.cookie).set('X-CSRF-Token', ana.csrf)).status).toBe(204);
+
+    const registros = lineas.join('\n');
+    expect(lineas.length).toBeGreaterThan(8);
+    expect(registros).not.toContain('MARCADOR_');
+    expect(registros).not.toContain(remitente);
+
+    const auditoria = JSON.stringify(await db.auditEvent.findMany({ where: { action: { startsWith: 'report.' } } }));
+    expect(auditoria).toContain('report.create');
+    expect(auditoria).toContain('report.delete');
+    expect(auditoria).not.toContain('MARCADOR_');
+    expect(auditoria).not.toContain(remitente);
   });
 });
