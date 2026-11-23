@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites) y M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada) hechos; contrato OpenAPI 0.3.0 (declara también M2 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada) y M2 (adjuntos: SHA-256, ClamAV y regla R7) hechos; contrato OpenAPI 0.3.0 (declara también M3 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -18,7 +18,7 @@ Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP
 
 ```bash
 cp .env.example .env          # cambia las contraseñas de ejemplo
-docker compose up -d --build  # PostgreSQL, migraciones, la API y el worker de análisis
+docker compose up -d --build  # PostgreSQL, migraciones, la API, el worker y ClamAV
 curl http://127.0.0.1:3000/api/v1/health   # {"status":"ok"}
 ```
 
@@ -88,13 +88,43 @@ curl -s -b cookies.txt -X POST -H "X-CSRF-Token: <csrfToken>" http://127.0.0.1:3
 | `GET /reports/{id}` y `/findings` | Detalle con enlaces desactivados y hallazgos con regla y evidencia |
 | `GET /reports/{id}/html` | HTML saneado al pedirlo, para un `<iframe sandbox>` (D-035). 409 mientras se analiza; 404 si no trae HTML |
 | `GET /reports/{id}/text` | Texto plano con todas las URL desactivadas |
-| `DELETE /reports/{id}` | Borra el reporte y su carpeta |
+| `GET /reports/{id}/attachments` | Adjuntos con SHA-256 y resultado de ClamAV (M2). 409 mientras se analiza |
+| `DELETE /reports/{id}` | Borra el reporte, sus adjuntos y su carpeta |
 
 - Un reporte ajeno o un id que no es UUID responde 404, no 403. Cuota por cuenta: `REPORTS_PER_USER_PER_HOUR`.
 - El archivo se guarda tal cual en el volumen `reports-data` (una carpeta por reporte, nombre aleatorio; D-038) con su SHA-256.
 - **Worker** (`node dist/worker.js`, servicio `worker`): la cola es la propia tabla `reports` (D-054). Toma trabajos con `FOR UPDATE SKIP LOCKED` y un arriendo de `JOB_LEASE_SECONDS`; si un worker muere, otro retoma el reporte. Reintenta hasta `JOB_MAX_ATTEMPTS` y después lo deja `failed`.
-- **Reglas** R1 a R6 (versión `m1-2026.11`) con evidencia; SPF, DKIM y DMARC solo informativos (D-016). R7 (adjuntos) llega en M2.
+- **Reglas** R1 a R7 (versión `m2-2026.11`) con evidencia; SPF, DKIM y DMARC solo informativos (D-016). R8 (indicadores confirmados) llega al final.
 - Nunca se visitan los enlaces y en las respuestas salen desactivados (`hxxp://dominio[.]com`, D-017). Los registros no llevan asuntos, remitentes ni contenido.
+
+## Adjuntos y ClamAV (M2)
+
+Cuando el worker analiza un `.eml`, saca sus adjuntos **en memoria** (mailparser ya decodificó el base64), calcula su SHA-256, mira sus primeros bytes para saber qué son y los manda a ClamAV uno por uno. **Los bytes de los adjuntos no se guardan en ningún lado**: en la base quedan solo los metadatos (tabla `attachments`). Nada se ejecuta ni se descomprime: un `.zip` se escanea y se registra como un solo archivo (D-018).
+
+- **Estados** (`scanStatus`): `not_detected` (ClamAV respondió OK; no quiere decir "seguro"), `detected` (`scanDetail` = nombre de la firma; el reporte sube a prioridad `high`), `unsupported` (vacío, mayor que `CLAMAV_MAX_SCAN_BYTES` o más allá de los primeros `MAX_ATTACHMENTS_SCANNED`) y `error` (ClamAV caído, sin respuesta, tiempo agotado o respuesta rara). **Un `error` nunca se trata como limpio**, y el reporte sigue `completed`.
+- **Topes:** se registran hasta 50 adjuntos por reporte y se escanean los primeros 20. Cada escaneo tiene `CLAMAV_TIMEOUT_MS` y todos juntos `CLAMAV_TOTAL_BUDGET_MS`; lo que no alcance queda `error` ("tiempo de escaneo agotado").
+- **Regla R7** (peso provisional 3): doble extensión que esconde un ejecutable (`factura.pdf.exe`), caracteres de dirección de texto en el nombre (U+202E…) o bytes cuya firma contradice la extensión o el tipo declarado. Los contenedores legítimos (`docx`, `xlsx`, `jar`… son ZIP; `doc`, `xls`, `msi` son OLE2) y el `application/octet-stream` genérico no disparan.
+- **Nombre del adjunto:** se guarda saneado (controles y caracteres de dirección escritos como `[U+202E]`, URL desactivadas, 255 caracteres). Nunca se usa como ruta ni va a los registros, que solo llevan conteos por estado.
+- **Correos que no se leen completos:** si el `.eml` tiene más de 15 niveles de multipart, solo se leen los encabezados: no hay adjuntos y el reporte queda `limited / parse_error`.
+
+**Para el front (Cesar):**
+
+- `GET /reports/{id}/attachments` con un reporte `failed` responde 200 con `items: []`. Eso **no** quiere decir "sin adjuntos": el correo no se pudo leer. Lo mismo puede pasar con `limited`. Mira siempre el `status` del reporte antes de decir "este correo no trae adjuntos".
+- `fileName`, `declaredType` y `scanDetail` son texto que viene del correo o de ClamAV: escápalos siempre, nunca los uses en un `href` ni como HTML.
+- `error` se muestra como "no se pudo escanear", nunca como limpio; `not_detected` como "ClamAV no detectó nada", no como "seguro".
+
+**ClamAV en el Compose:** servicio `clamav` con la imagen oficial `clamav/clamav:1.5.5`, sin puertos publicados y en una red `clamav-net` que solo comparte con el worker. Necesita **al menos 3 GiB de RAM**, y el primer arranque descarga las firmas (varios minutos; quedan en el volumen `clamav-db`). Mientras carga, los adjuntos salen `error`. El worker no espera a que esté sano: si ClamAV se cae, sigue analizando y marca `error` (P-05).
+
+**Prueba de humo contra un ClamAV real** (opcional; el CI no la corre):
+
+```bash
+docker run -d --rm --name cbl-clamav-smoke -e CLAMAV_NO_MILTERD=true -p 127.0.0.1:3310:3310 clamav/clamav:1.5.5
+docker logs -f cbl-clamav-smoke        # esperar "clamd started"
+CLAMAV_TEST_HOST=127.0.0.1 npx vitest run test/clamav-smoke.test.ts
+docker stop cbl-clamav-smoke
+```
+
+El archivo de prueba EICAR se arma en memoria al correr la prueba (`test/eicar.ts`); la cadena completa no está en el repositorio.
 
 ### Limpieza programada
 
@@ -141,6 +171,16 @@ nginx sirve la aplicación y reenvía `/api/*` a la API (mismo origen, sin CORS)
 | `WEB_PORT` / `WEB_REPO_DIR` | 8080 / `../correobajolupa-web` | Front con el perfil `web` |
 
 `STORAGE_DIR` es fija en el Compose (`/data/reports`, volumen `reports-data`).
+
+### Variables de M2 (solo el worker)
+
+| Variable | Por defecto | Para qué |
+| --- | --- | --- |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | `clamav` / 3310 | Dónde está clamd (fijas en el Compose) |
+| `CLAMAV_TIMEOUT_MS` | 10000 | Tiempo máximo de un escaneo |
+| `CLAMAV_TOTAL_BUDGET_MS` | 20000 | Tiempo máximo de todos los escaneos de un reporte; no puede pasar de `JOB_LEASE_SECONDS * 1000 / 2` |
+| `CLAMAV_MAX_SCAN_BYTES` | 10 MiB | Adjuntos más grandes quedan `unsupported` (debe ser ≤ `StreamMaxLength` de clamd, 100 MiB por defecto) |
+| `MAX_ATTACHMENTS_SCANNED` | 20 | Cuántos adjuntos se escanean por reporte |
 
 ## Base de datos (Prisma 7)
 
