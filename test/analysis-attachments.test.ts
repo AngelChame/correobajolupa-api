@@ -45,8 +45,8 @@ describe('tipo por los primeros bytes', () => {
 
 describe('nombre saneado', () => {
   it('escapa controles y caracteres de dirección de texto de forma visible', () => {
-    expect(sanitizeFileName('factura‮fdp.exe')).toBe('factura[U+202E]fdp.exe');
-    expect(sanitizeFileName('a\u0000b\u001fc\u0085d⁦e')).toBe('a[U+0000]b[U+001F]c[U+0085]d[U+2066]e');
+    expect(sanitizeFileName('factura\u202Efdp.exe')).toBe('factura[U+202E]fdp.exe');
+    expect(sanitizeFileName('a\u0000b\u001fc\u0085d\u2066e')).toBe('a[U+0000]b[U+001F]c[U+0085]d[U+2066]e');
   });
 
   it('desactiva URL (D-017) y deja igual un nombre normal o con ../', () => {
@@ -121,7 +121,7 @@ describe('analyze(): adjuntos', () => {
   });
 
   it('un nombre con U+202E se guarda escapado y se marca para R7', async () => {
-    const r = await analyze(correoConAdjuntos([{ name: 'factura‮fdp.exe', type: 'application/octet-stream', content: bytes(0x4d, 0x5a) }]), 'eml', INST);
+    const r = await analyze(correoConAdjuntos([{ name: 'factura\u202Efdp.exe', type: 'application/octet-stream', content: bytes(0x4d, 0x5a) }]), 'eml', INST);
     expect(r.attachments[0]).toMatchObject({ fileName: 'factura[U+202E]fdp.exe', hasBidiControls: true, extension: 'exe' });
   });
 
@@ -175,7 +175,7 @@ describe('regla R7', () => {
   });
 
   it('un nombre con U+202E dispara aunque no tenga doble extensión', async () => {
-    const f = await r7([{ name: 'factura‮fdp.scr', type: 'application/octet-stream', content: Buffer.from('sin firma') }]);
+    const f = await r7([{ name: 'factura\u202Efdp.scr', type: 'application/octet-stream', content: Buffer.from('sin firma') }]);
     expect(f?.evidence[0]).toEqual({ label: 'Archivo adjunto', value: 'factura[U+202E]fdp.scr', kind: 'text' });
   });
 

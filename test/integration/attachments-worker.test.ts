@@ -128,7 +128,7 @@ describe('worker con adjuntos', () => {
       ana,
       correoConAdjuntos([
         { name: '../../../fuera-del-volumen.txt', type: 'text/plain', content: Buffer.from('uno') },
-        { name: 'factura‮fdp.exe', type: 'application/octet-stream', content: Buffer.from('MZ sintético', 'latin1') },
+        { name: 'factura\u202Efdp.exe', type: 'application/octet-stream', content: Buffer.from('MZ sintético', 'latin1') },
       ]),
     );
     expect(await processNext(deps(storage, fake.port).d)).toBe('done');

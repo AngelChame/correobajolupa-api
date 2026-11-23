@@ -160,8 +160,8 @@ export function detectType(content: Buffer): string | null {
  * de texto (U+200E, U+200F, U+061C, U+202A a U+202E, U+2066 a U+2069). Con U+202E, por ejemplo,
  * "factura[U+202E]fdp.exe" se ve como "facturaexe.pdf".
  */
-const HIDDEN_CHARS = /[\x00-\x1f\x7f-\x9f؜‎‏‪-‮⁦-⁩]/g;
-const BIDI_CHARS = /[؜‎‏‪-‮⁦-⁩]/;
+const HIDDEN_CHARS = /[\x00-\x1f\x7f-\x9f\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const BIDI_CHARS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 
 const escapeHidden = (s: string) =>
   s.replace(HIDDEN_CHARS, (c) => `[U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}]`);
