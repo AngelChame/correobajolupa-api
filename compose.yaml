@@ -248,7 +248,7 @@ services:
       db-test:
         condition: service_healthy
 
-  # `npm run test:imap:docker`: prueba de humo contra el Dovecot del laboratorio, desde dentro de
+  # `npm run test:imap:docker`: pruebas de humo contra el Dovecot del laboratorio (servidor y siembra), desde dentro de
   # imap-net (el 143 no se publica al host). default solo sirve para que npm ci descargue paquetes.
   test-imap:
     profiles: [test]
@@ -265,7 +265,8 @@ services:
       IMAP_LAB_PORT: "143"
       IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
     networks: [default, imap-net]
-    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run test/imap-smoke.test.ts"]
+    # Un archivo a la vez: la siembra cuenta mensajes y imap-smoke inserta y borra uno temporal.
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vitest run --no-file-parallelism test/imap-smoke.test.ts test/lab-seed-smoke.test.ts"]
     depends_on:
       imap:
         condition: service_healthy
