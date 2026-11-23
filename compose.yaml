@@ -146,6 +146,29 @@ services:
       timeout: 3s
       retries: 15
 
+  # `npm run test:int:docker`: las pruebas de integración dentro de Linux (como el CI), contra
+  # db-test. Imagen: etapa deps del Dockerfile (node:24.22.3-bookworm-slim con openssl para Prisma).
+  # El código se monta de la máquina; node_modules y el cliente generado de Prisma van en volúmenes
+  # propios, así nunca se usan ni se pisan los de Windows.
+  test-int:
+    profiles: [test]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app
+      - test-node-modules:/app/node_modules
+      - test-prisma-generated:/app/src/generated
+    environment:
+      DATABASE_URL: postgresql://cbl_test:cbl_test@db-test:5432/correobajolupa_test
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx prisma generate && npm run test:int"]
+    depends_on:
+      db-test:
+        condition: service_healthy
+
 volumes:
   db-data:
   reports-data:
+  test-node-modules:
+  test-prisma-generated:

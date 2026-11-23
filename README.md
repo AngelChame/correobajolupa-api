@@ -110,6 +110,18 @@ docker compose --profile test rm -sf db-test            # al terminar
 
 En PowerShell: `$env:DATABASE_URL = "postgresql://cbl_test:cbl_test@127.0.0.1:5433/correobajolupa_test"; npm run test:int`.
 
+**La referencia es el CI (Linux).** En Windows, Vitest a veces pierde un proceso de prueba con el código
+`0xC0000409` (una caída nativa, intermitente, en archivos distintos; no se reproduce en Linux). Si pasa,
+corre la integración dentro de un contenedor Linux:
+
+```bash
+npm run test:int:docker                                 # levanta db-test y corre las pruebas en node:24 Linux
+docker compose --profile test rm -sf db-test test-int   # al terminar
+```
+
+`node_modules` y el cliente de Prisma del contenedor viven en volúmenes propios (`test-node-modules`,
+`test-prisma-generated`); los de tu máquina no se tocan.
+
 ## Repositorio relacionado
 
 El front vive en un repositorio aparte (`correobajolupa-web`, nombre por confirmar). El despliegue construye ambos juntos con Docker Compose.
