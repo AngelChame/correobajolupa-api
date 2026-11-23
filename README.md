@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) y M3 (informe con guía de mitigación) hechos; contrato OpenAPI 0.3.0 (declara también M4 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) y M3 (informe con guía de mitigación) hechos. M4 (laboratorio IMAP) en curso: Dovecot, 21 mensajes sintéticos con su siembra y la sincronización de un buzón, todavía sin endpoints. Contrato OpenAPI 0.3.0 (declara también M4 a M7). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -156,6 +156,10 @@ El worker limpia al arrancar y cada `CLEANUP_INTERVAL_MIN` minutos (60 por defec
 
 Con varios workers, un candado de PostgreSQL (`pg_try_advisory_xact_lock`) hace que solo uno limpie a la vez. Cada vuelta deja en la auditoría `system.cleanup` con los conteos.
 
+## Laboratorio IMAP (M4, en curso)
+
+Dovecot con tres buzones sintéticos (`student`, `teacher` y `staff` `@lab.example`) en su propio contenedor, sin puertos publicados. Cómo levantarlo, sembrarlo (`npm run lab:seed`), las pruebas de humo y la sincronización: [`docker/imap/README.md`](docker/imap/README.md). El conjunto sintético y su verdad de referencia: [`test/fixtures/README.md`](test/fixtures/README.md).
+
 ## Pila completa con el front
 
 El front (repo de Cesar) se construye desde una carpeta al lado de esta (D-031):
@@ -201,6 +205,15 @@ nginx sirve la aplicación y reenvía `/api/*` a la API (mismo origen, sin CORS)
 | `CLAMAV_TOTAL_BUDGET_MS` | 20000 | Tiempo máximo de todos los escaneos de un reporte; no puede pasar de `JOB_LEASE_SECONDS * 1000 / 2` |
 | `CLAMAV_MAX_SCAN_BYTES` | 10 MiB | Adjuntos más grandes quedan `unsupported` (debe ser ≤ `StreamMaxLength` de clamd, 100 MiB por defecto) |
 | `MAX_ATTACHMENTS_SCANNED` | 20 | Cuántos adjuntos se escanean por reporte |
+
+### Variables de M4 (laboratorio IMAP)
+
+| Variable | Por defecto | Para qué |
+| --- | --- | --- |
+| `IMAP_LAB_PASSWORD` | (vacía) | Contraseña de los tres buzones, 16 caracteres o más. Sin ella solo el contenedor `imap` se niega a arrancar |
+| `IMAP_LAB_HOST` / `IMAP_LAB_PORT` | `imap` / 143 | Dónde está Dovecot (solo dentro de `imap-net`) |
+| `SYNC_MAX_MESSAGES` | 500 | Mensajes por buzón en una sincronización; lo demás se ignora y se cuenta |
+| `SYNC_BUDGET_MS` | 45000 | Tiempo máximo de una sincronización (hasta 55000, por debajo de los 60 s del proxy) |
 
 ## Base de datos (Prisma 7)
 

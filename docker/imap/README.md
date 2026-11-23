@@ -68,13 +68,48 @@ Para empezar de cero: `docker compose down` y borrar el volumen `imap-data` (`do
 
 `test/lab-seed-smoke.test.ts` siembra dos veces: cada mensaje queda una sola vez (7 por buzón) y la segunda corrida inserta 0. Deja los buzones sembrados.
 
-Como el 143 no se publica, las dos se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
+`test/mail-imap-smoke.test.ts` prueba el proveedor de correo (`src/mail/imap.ts`): lista `INBOX` de un buzón sembrado con UIDVALIDITY estable, baja un mensaje igual byte a byte al `.eml` y devuelve `null` si pasa del tope.
+
+Como el 143 no se publica, las tres se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
 
 ```bash
 npm run test:imap:docker
 ```
 
 Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
+
+## Sincronización de un buzón (paso 3; los endpoints llegan en el paso 4)
+
+`syncMailbox` (`src/lab/sync.ts`) deja el índice de la base igual a lo que hay en `INBOX` y `Cuarentena` de un buzón. Todavía no tiene ruta: el paso 4 la expone como `POST /mailboxes/{id}/sync`.
+
+**Tablas** (migración `20261124100000_laboratorio`, que además inserta los 3 buzones):
+
+| Tabla | Qué guarda |
+| --- | --- |
+| `mailboxes` | Etiqueta, dirección, `last_sync_at`, `last_sync_status` (`ok`, `error` o `never`) y el arriendo `sync_started_at` |
+| `indexed_messages` | Un mensaje por (buzón, clave de deduplicación): carpeta, UID y UIDVALIDITY (BIGINT, 32 bits sin signo), asunto, remitente, Reply-To, fecha del `Date`, prioridad, reglas que disparó (`rule_ids`), autenticación y versión de reglas |
+| `indexed_message_links` | Enlaces como en los reportes: URL normalizada y dominio crudos (para buscar en M5) y la forma desactivada |
+| `indexed_message_attachments` | Nombre saneado, tipos, tamaño y SHA-256. **Nunca los bytes.** `scan_status = unsupported` |
+
+**Nada de bytes de correo en la base.** Asunto, remitente, Reply-To y nombres de archivo son texto del correo: se guardan tal cual y el front los escapa.
+
+**Cómo funciona:**
+
+1. **Arriendo** (como la cola, D-054): un `UPDATE … RETURNING` toma `sync_started_at` solo si está libre o tiene más de 60 s. Si no, `SyncInProgressError` (el paso 4 responde 409). Se libera siempre al terminar.
+2. **Lista** las dos carpetas con el proveedor de correo (`src/mail/`, D-007), sin bajar cuerpos.
+3. **UIDVALIDITY** (D-008): si el de una carpeta cambió, se borran sus filas viejas (esos UID ya no significan nada), se reindexa y el resultado dice `uidValidityChanged: true`.
+4. **Clave de deduplicación** (RF-07): el `Message-ID` sin espacios y en minúsculas; si no trae, `sha256:` del crudo (hay que bajarlo para calcularla). Un mensaje que pasa de `INBOX` a `Cuarentena` conserva su clave: se actualizan carpeta y UID en la **misma fila** (`updated`), no se duplica.
+5. **Mensajes nuevos:** se bajan con tope `MAX_EML_BYTES` (los más grandes no se indexan y se cuentan), se analizan con el mismo analizador de los reportes y se guardan en una transacción por mensaje (`added`).
+6. **Lo que desapareció** del servidor sale del índice.
+7. **Topes:** `SYNC_MAX_MESSAGES` (500; primero Cuarentena, luego INBOX del más nuevo al más viejo) y `SYNC_BUDGET_MS` (45 s). Si se acaba el tiempo, lo ya indexado se queda, el estado pasa a `error` y se lanza `SyncTimeoutError` (503 en el paso 4). Si Dovecot no responde o rechaza el acceso: `MailUnavailableError` (503).
+
+**Resultado:** `{ mailboxId, fetched, added, updated, uidValidityChanged, finishedAt }` (como `SyncResult` del contrato). `fetched` cuenta los mensajes que se bajaron del servidor, no los que ya se conocían.
+
+**Adjuntos sin escanear:** la sincronización corre en la API, que no está en `clamav-net`, y no se amplía esa exposición. Por eso quedan `unsupported` con el detalle "No se escanea al sincronizar el laboratorio." (D-018: nunca "limpio"). M5 compara por SHA-256.
+
+**Registros y auditoría (P-18):** solo `mailboxId`, conteos (`fetched`, `added`, `updated`, `deleted`, `ignored`, `tooLarge`) y tiempos. Nunca asuntos, remitentes, direcciones, `Message-ID` ni contenido. Cada corrida deja un evento `mailbox.sync` (`success` o `failure` con `reason`).
+
+**Pruebas:** `test/integration/lab-sync.test.ts` (PostgreSQL real con un proveedor en memoria; `npm run test:int:docker`) y `test/mail-imap-smoke.test.ts` (el proveedor IMAP contra el Dovecot real; `npm run test:imap:docker`).
 
 ## Comprobaciones manuales (23 nov 2026)
 
