@@ -68,7 +68,7 @@ Para empezar de cero: `docker compose down` y borrar el volumen `imap-data` (`do
 
 `test/lab-seed-smoke.test.ts` siembra dos veces: cada mensaje queda una sola vez (7 por buzón) y la segunda corrida inserta 0. Deja los buzones sembrados.
 
-`test/mail-imap-smoke.test.ts` prueba el proveedor de correo (`src/mail/imap.ts`): lista `INBOX` de un buzón sembrado con UIDVALIDITY estable, baja un mensaje igual byte a byte al `.eml` y devuelve `null` si pasa del tope.
+`test/mail-imap-smoke.test.ts` prueba el proveedor de correo (`src/mail/imap.ts`): lista `INBOX` de un buzón sembrado con UIDVALIDITY estable, baja un mensaje igual byte a byte al `.eml`, devuelve `null` si pasa del tope y hace `append` con UID y UIDVALIDITY coherentes (con un `Message-ID` único que borra al terminar).
 
 Como el 143 no se publica, las tres se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
 
@@ -78,9 +78,9 @@ npm run test:imap:docker
 
 Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
 
-## Sincronización de un buzón (paso 3; los endpoints llegan en el paso 4)
+## Sincronización de un buzón (`POST /mailboxes/{id}/sync`)
 
-`syncMailbox` (`src/lab/sync.ts`) deja el índice de la base igual a lo que hay en `INBOX` y `Cuarentena` de un buzón. Todavía no tiene ruta: el paso 4 la expone como `POST /mailboxes/{id}/sync`.
+`syncMailbox` (`src/lab/sync.ts`) deja el índice de la base igual a lo que hay en `INBOX` y `Cuarentena` de un buzón. La ruta `POST /mailboxes/{id}/sync` (analista o administrador) la llama con quién y con qué petición, para la auditoría.
 
 **Tablas** (migración `20261124100000_laboratorio`, que además inserta los 3 buzones):
 
@@ -95,13 +95,13 @@ Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
 
 **Cómo funciona:**
 
-1. **Arriendo** (como la cola, D-054): un `UPDATE … RETURNING` toma `sync_started_at` solo si está libre o tiene más de 60 s. Si no, `SyncInProgressError` (el paso 4 responde 409). Se libera siempre al terminar.
+1. **Arriendo** (como la cola, D-054): un `UPDATE … RETURNING` toma `sync_started_at` solo si está libre o tiene más de 60 s. Si no, `SyncInProgressError` (409 `conflict`). La entrega simulada usa el mismo arriendo. Se libera siempre al terminar.
 2. **Lista** las dos carpetas con el proveedor de correo (`src/mail/`, D-007), sin bajar cuerpos.
 3. **UIDVALIDITY** (D-008): si el de una carpeta cambió, se borran sus filas viejas (esos UID ya no significan nada), se reindexa y el resultado dice `uidValidityChanged: true`.
 4. **Clave de deduplicación** (RF-07): el `Message-ID` sin espacios y en minúsculas; si no trae, `sha256:` del crudo (hay que bajarlo para calcularla). Un mensaje que pasa de `INBOX` a `Cuarentena` conserva su clave: se actualizan carpeta y UID en la **misma fila** (`updated`), no se duplica.
 5. **Mensajes nuevos:** se bajan con tope `MAX_EML_BYTES` (los más grandes no se indexan y se cuentan), se analizan con el mismo analizador de los reportes y se guardan en una transacción por mensaje (`added`).
 6. **Lo que desapareció** del servidor sale del índice.
-7. **Topes:** `SYNC_MAX_MESSAGES` (500; primero Cuarentena, luego INBOX del más nuevo al más viejo) y `SYNC_BUDGET_MS` (45 s). Si se acaba el tiempo, lo ya indexado se queda, el estado pasa a `error` y se lanza `SyncTimeoutError` (503 en el paso 4). Si Dovecot no responde o rechaza el acceso: `MailUnavailableError` (503).
+7. **Topes:** `SYNC_MAX_MESSAGES` (500; primero Cuarentena, luego INBOX del más nuevo al más viejo) y `SYNC_BUDGET_MS` (45 s). Si se acaba el tiempo, lo ya indexado se queda, el estado pasa a `error` y se lanza `SyncTimeoutError` (503). Si Dovecot no responde, rechaza el acceso o falta la contraseña: `MailUnavailableError` (503). Las respuestas de error llevan un mensaje fijo: nada del servidor IMAP, direcciones ni contraseñas. Un buzón que no existe da 404.
 
 **Resultado:** `{ mailboxId, fetched, added, updated, uidValidityChanged, finishedAt }` (como `SyncResult` del contrato). `fetched` cuenta los mensajes que se bajaron del servidor, no los que ya se conocían.
 
@@ -109,7 +109,17 @@ Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
 
 **Registros y auditoría (P-18):** solo `mailboxId`, conteos (`fetched`, `added`, `updated`, `deleted`, `ignored`, `tooLarge`) y tiempos. Nunca asuntos, remitentes, direcciones, `Message-ID` ni contenido. Cada corrida deja un evento `mailbox.sync` (`success` o `failure` con `reason`).
 
-**Pruebas:** `test/integration/lab-sync.test.ts` (PostgreSQL real con un proveedor en memoria; `npm run test:int:docker`) y `test/mail-imap-smoke.test.ts` (el proveedor IMAP contra el Dovecot real; `npm run test:imap:docker`).
+**Pruebas:** `test/integration/lab-routes.test.ts` (las 5 rutas de punta a punta), `test/integration/lab-sync.test.ts` (PostgreSQL real con un proveedor en memoria; `npm run test:int:docker`) y `test/mail-imap-smoke.test.ts` (el proveedor IMAP contra el Dovecot real; `npm run test:imap:docker`).
+
+## Entrega simulada (`POST /mailboxes/{id}/simulated-delivery`)
+
+**Es una simulación local:** copia un correo a un buzón del Dovecot del laboratorio con IMAP `APPEND`. No envía correo a ningún sitio externo, no resuelve ningún dominio y no visita enlaces (D-017).
+
+- **Entrada:** `{ reportId }` de un reporte subido como `.eml` (un reporte pegado da 400). El original se lee **del almacenamiento del reporte** (D-038), nunca se recibe del cliente. Reporte, archivo o buzón inexistente: 404.
+- **Qué hace:** `APPEND` a INBOX con la fecha del `Date` del correo; el UID y el UIDVALIDITY salen de la respuesta del servidor (UIDPLUS, D-006): si no los da, 503 en vez de adivinar. Luego indexa ese mensaje con el mismo `indexMessage` de la sincronización (mismas reglas, adjuntos `unsupported`) y responde 201 con el `MessageSummary`.
+- **Idempotente:** si el buzón ya tiene indexado un mensaje con la misma clave de deduplicación, no hay otro `APPEND` y responde el existente (201). Una sincronización posterior lo reconoce y no cambia nada.
+- **Arriendo:** no corre a la vez que una sincronización del mismo buzón (409).
+- **Auditoría:** `mailbox.simulated_delivery` con `reportId` y `appended` (1 o 0), o `reason` si falló. Registros solo con IDs.
 
 ## Comprobaciones manuales (23 nov 2026)
 
