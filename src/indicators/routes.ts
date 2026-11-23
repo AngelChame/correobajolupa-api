@@ -35,7 +35,7 @@ function toExclusionDto(row: { id: string | null; domain: string; reason: string
   });
 }
 
-const INDICATOR_SELECT = {
+export const INDICATOR_SELECT = {
   id: true,
   type: true,
   value: true,
@@ -47,10 +47,10 @@ const INDICATOR_SELECT = {
   decidedBy: { select: { id: true, displayName: true } },
 } as const;
 
-type IndicatorRow = Prisma.IndicatorGetPayload<{ select: typeof INDICATOR_SELECT }>;
+export type IndicatorRow = Prisma.IndicatorGetPayload<{ select: typeof INDICATOR_SELECT }>;
 
 /** Forma del contrato: el valor sale solo desactivado (displayValue, D-017); nunca crudo ni la nota. */
-function toIndicatorDto(row: IndicatorRow): z.infer<typeof Indicator> {
+export function toIndicatorDto(row: IndicatorRow): z.infer<typeof Indicator> {
   return Indicator.parse({
     id: row.id,
     type: row.type,
