@@ -1,0 +1,23 @@
+From: =?utf-8?q?Facturaci=C3=B3n?= <facturas@servicio-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Factura 0042
+Date: Tue, 10 Nov 2026 17:08:00 -0600
+Message-ID: <fx014@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============8465590450876392045=="
+
+--===============8465590450876392045==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Adjunto su factura.
+
+--===============8465590450876392045==
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="factura-0042.pdf.exe"
+MIME-Version: 1.0
+
+Q09OVEVOSURPIFNJTlRFVElDTywgTk8gRUpFQ1VUQUJMRQ==
+
+--===============8465590450876392045==--

@@ -1,0 +1,23 @@
+From: =?utf-8?q?Facturaci=C3=B3n?= <facturas@servicio-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Estado de cuenta
+Date: Tue, 10 Nov 2026 17:15:00 -0600
+Message-ID: <fx015@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============7919792762557051297=="
+
+--===============7919792762557051297==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Adjunto su estado de cuenta.
+
+--===============7919792762557051297==
+Content-Type: application/zip
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="estado-de-cuenta.pdf"
+MIME-Version: 1.0
+
+UEsDBCBDT05URU5JRE8gU0lOVEVUSUNP
+
+--===============7919792762557051297==--

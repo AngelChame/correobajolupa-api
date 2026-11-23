@@ -1,0 +1,16 @@
+Return-Path: <rebote@banco-ejemplo.example>
+Received: from mx.banco-ejemplo.example (mx.banco-ejemplo.example [203.0.113.10])
+        by mx.ejemplo.invalid with ESMTPS id fxt01
+        for <persona.reportante@universidad-ejemplo.example>;
+        Tue, 10 Nov 2026 18:10:00 -0600
+From: Soporte Banco <soporte@banco-ejemplo.example>
+Reply-To: pagos@correo-desconocido.invalid
+To: persona.reportante@universidad-ejemplo.example
+Subject: Pago rechazado
+Date: Tue, 10 Nov 2026 18:10:00 -0600
+Message-ID: <fx-t01@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Tu último pago fue rechazado. Responde a este mensaje con los datos de tu tarjeta.
