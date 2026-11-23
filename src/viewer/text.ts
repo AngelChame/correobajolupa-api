@@ -32,3 +32,13 @@ const BARE_HOST = /\b(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]{1,62}\b|\b\d{1,3}(?:\.\d{1,
 export function defangLooseText(text: string): string {
   return defangText(text).replace(BARE_HOST, (host) => defangHost(host));
 }
+
+/**
+ * Dirección de correo como indicador (D-017): "usuario@dominio.com" → "usuario[@]dominio[.]com".
+ * Más fuerte que defangEmail (que deja la @): así ni un autolink de correo la reconoce. El buzón se
+ * deja igual y se corta en la última @. Sin @, solo se desactivan los puntos.
+ */
+export function defangAddress(address: string): string {
+  const at = address.lastIndexOf('@');
+  return at === -1 ? defangHost(address) : `${address.slice(0, at)}[@]${defangHost(address.slice(at + 1))}`;
+}

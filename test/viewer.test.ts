@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { readHtml, readText } from '../src/viewer/read.js';
 import { FALLBACK_HTML, MAX_HTML_CHARS, renderSafeHtml } from '../src/viewer/sanitize.js';
-import { defangLooseText, defangText } from '../src/viewer/text.js';
+import { defangAddress, defangLooseText, defangText } from '../src/viewer/text.js';
 
 // Visor del correo (D-035): HTML saneado y texto con URL desactivadas. Datos sintéticos.
 const FIXTURES = new URL('./fixtures/', import.meta.url);
@@ -131,5 +131,21 @@ describe('texto con URL desactivadas', () => {
     const texto = defangText(await readText(eml('R2-texto-enlace-enganoso'), 'eml'));
     expect(texto).toContain('hoy mismo');
     expect(texto).not.toMatch(/https?:\/\//);
+  });
+});
+
+describe('defangAddress (indicador de remitente)', () => {
+  it('desactiva la @ y los puntos del dominio; el buzón queda igual', () => {
+    expect(defangAddress('soporte@banco-ejemplo.example')).toBe('soporte[@]banco-ejemplo[.]example');
+    expect(defangAddress('nombre.apellido@sub.dominio.example')).toBe('nombre.apellido[@]sub[.]dominio[.]example');
+  });
+
+  it('corta en la última @ y, sin @, solo desactiva los puntos', () => {
+    expect(defangAddress('"a@b"@dominio.example')).toBe('"a@b"[@]dominio[.]example');
+    expect(defangAddress('sin-arroba.example')).toBe('sin-arroba[.]example');
+  });
+
+  it('el resultado ya no parece una dirección de correo', () => {
+    expect(defangAddress('persona@ejemplo.invalid')).not.toMatch(/[\w.+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i);
   });
 });
