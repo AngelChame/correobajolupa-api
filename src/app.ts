@@ -33,11 +33,15 @@ export type AppDeps = {
 export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
-  // 'trust proxy' queda APAGADO a propósito hasta que exista el proxy inverso (nº 28).
-  // Con él apagado, req.ip es la dirección de quien abre la conexión TCP; en el Compose es la
-  // del puente de Docker, así que el límite por IP lo comparten todas las personas. Al poner
-  // el proxy: app.set('trust proxy', 1) (un salto) y revisar los límites. Nunca 'true' a
-  // ciegas: permitiría falsificar la IP con X-Forwarded-For.
+  // 'trust proxy' depende de TRUST_PROXY_HOPS (0 por defecto = apagado, mientras no exista el
+  // proxy inverso, nº 28). Apagado, req.ip es la dirección de quien abre la conexión TCP; en el
+  // Compose es la del puente de Docker, así que el límite por IP lo comparten todas las personas.
+  // Con el proxy delante: TRUST_PROXY_HOPS=1 (un salto) y revisar los límites. Siempre un
+  // número de saltos, nunca 'true': confiaría en cualquier X-Forwarded-For y la IP se podría
+  // falsificar (config.ts solo acepta enteros).
+  if (config.TRUST_PROXY_HOPS > 0) {
+    app.set('trust proxy', config.TRUST_PROXY_HOPS);
+  }
 
   app.use(
     pinoHttp({

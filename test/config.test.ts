@@ -70,4 +70,44 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL: URL_VALIDA, RATE_LIMIT_LOGIN_PER_IP: '7' }).RATE_LIMIT_LOGIN_PER_IP).toBe(7);
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, RATE_LIMIT_LOGIN_PER_IP: '0' })).toContain('RATE_LIMIT_LOGIN_PER_IP');
   });
+
+  it('aplica los valores por defecto de M1 (reportes, cola y proxy)', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA })).toMatchObject({
+      TRUST_PROXY_HOPS: 0,
+      STORAGE_DIR: '/data/reports',
+      MAX_EML_BYTES: 10 * 1024 * 1024,
+      MAX_PASTE_BYTES: 1024 * 1024,
+      REPORTS_PER_USER_PER_HOUR: 30,
+      INSTITUTIONAL_DOMAINS: [],
+      WORKER_POLL_MS: 1000,
+      JOB_LEASE_SECONDS: 120,
+      JOB_MAX_ATTEMPTS: 3,
+    });
+  });
+
+  it('TRUST_PROXY_HOPS acepta solo un número de saltos, nunca true', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1);
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: '' }).TRUST_PROXY_HOPS).toBe(0);
+    for (const valor of ['true', 'false', '-1', '1.5', 'loopback', '99']) {
+      expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, TRUST_PROXY_HOPS: valor }), valor).toContain('TRUST_PROXY_HOPS');
+    }
+  });
+
+  it('INSTITUTIONAL_DOMAINS se lee como lista en minúsculas y rechaza lo que no es dominio', () => {
+    const config = loadConfig({ DATABASE_URL: URL_VALIDA, INSTITUTIONAL_DOMAINS: ' Universidad-Ejemplo.example , ,otra.example ' });
+    expect(config.INSTITUTIONAL_DOMAINS).toEqual(['universidad-ejemplo.example', 'otra.example']);
+    for (const valor of ['203.0.113.4', 'https://sitio.example', 'sin-punto', 'a b.example', '-mal.example']) {
+      expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, INSTITUTIONAL_DOMAINS: valor }), valor).toContain('INSTITUTIONAL_DOMAINS');
+    }
+  });
+
+  it('STORAGE_DIR debe ser una ruta absoluta', () => {
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, STORAGE_DIR: 'datos/reportes' })).toContain('STORAGE_DIR');
+  });
+
+  it('los tamaños y la cola rechazan ceros y valores fuera de rango', () => {
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, MAX_EML_BYTES: '0' })).toContain('MAX_EML_BYTES');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, JOB_MAX_ATTEMPTS: '0' })).toContain('JOB_MAX_ATTEMPTS');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, WORKER_POLL_MS: '10' })).toContain('WORKER_POLL_MS');
+  });
 });
