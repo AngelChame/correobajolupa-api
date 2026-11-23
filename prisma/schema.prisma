@@ -1,4 +1,4 @@
-// Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría).
+// Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes).
 // Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
 // La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
 
@@ -30,6 +30,54 @@ enum AuditResult {
   @@map("audit_result")
 }
 
+// Enums de reportes: mismos valores que src/contract/schemas/reports.ts
+// (test/prisma-enums.test.ts falla si se separan).
+
+enum ReportStatus {
+  queued
+  processing
+  completed
+  limited
+  failed
+
+  @@map("report_status")
+}
+
+enum ReportSource {
+  eml
+  paste
+
+  @@map("report_source")
+}
+
+enum Priority {
+  low
+  medium
+  high
+
+  @@map("report_priority")
+}
+
+enum LimitedReason {
+  missing_headers
+  parse_error
+
+  @@map("limited_reason")
+}
+
+enum RuleId {
+  R1
+  R2
+  R3
+  R4
+  R5
+  R6
+  R7
+  R8
+
+  @@map("rule_id")
+}
+
 /// Cuenta de la plataforma. El email se guarda siempre en minúsculas
 /// (normalizeEmail en src/db/email.ts y un CHECK en la migración), así
 /// el índice único impide duplicados que solo cambian en mayúsculas.
@@ -47,6 +95,7 @@ model User {
 
   sessions    Session[]
   auditEvents AuditEvent[]
+  reports     Report[]
 
   @@map("users")
 }
@@ -95,4 +144,88 @@ model AuditEvent {
   @@index([createdAt])
   @@index([actorId])
   @@map("audit_events")
+}
+
+/// Reporte de un correo (modo real). Es también la cola de análisis (D-054): el worker toma
+/// filas `queued` (o `processing` con el arriendo vencido) y las bloquea con lockedUntil.
+/// El archivo original vive en el almacenamiento (D-038); aquí solo su clave, tamaño y SHA-256.
+/// subject y fromAddress son texto del correo: se escapan siempre y nunca van a los registros.
+model Report {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         ReportStatus   @default(queued)
+  source         ReportSource
+  subject        String?
+  fromAddress    String?        @map("from_address")
+  /// Nula mientras no termine el análisis.
+  priority       Priority?
+  /// Solo con status = limited (CHECK en la migración).
+  limitedReason  LimitedReason? @map("limited_reason")
+  rulesVersion   String?        @map("rules_version") @db.VarChar(32)
+  analyzedAt     DateTime?      @map("analyzed_at") @db.Timestamptz(3)
+  hasHtml        Boolean        @default(false) @map("has_html")
+  /// SPF, DKIM y DMARC como información (D-016): { spf, dkim, dmarc }. Nunca suman puntaje.
+  authentication Json?
+  /// Clave que devuelve el almacenamiento (carpeta del reporte / nombre aleatorio). Nunca una ruta ni el nombre del adjunto.
+  storageKey     String         @map("storage_key") @db.VarChar(128)
+  sizeBytes      Int            @map("size_bytes")
+  /// SHA-256 en hexadecimal de los bytes guardados.
+  sha256         String         @db.Char(64)
+  createdAt      DateTime       @default(dbgenerated("transaction_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  /// Retención de 7 días (D-012). createdAt y expiresAt los calcula la base con la misma hora
+  /// de la transacción, así expiresAt - createdAt es exactamente 7 días.
+  expiresAt      DateTime       @default(dbgenerated("(transaction_timestamp() + '7 days'::interval)")) @map("expires_at") @db.Timestamptz(3)
+
+  // Cola (D-054)
+  attempts      Int       @default(0)
+  /// Arriendo del worker: mientras sea futuro, ningún otro worker toma la fila.
+  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(3)
+  /// Código corto del último error (p. ej. "parse_timeout"). Nunca el mensaje ni contenido del correo.
+  lastErrorCode String?   @map("last_error_code") @db.VarChar(64)
+
+  findings Finding[]
+  links    ReportLink[]
+
+  @@index([status, lockedUntil])
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("reports")
+}
+
+/// Hallazgo de una regla. Solo inserción: un trigger de la migración rechaza los UPDATE
+/// (los hallazgos nunca se sobrescriben); se borran solo junto con su reporte.
+model Finding {
+  id           String   @id @default(uuid()) @db.Uuid
+  reportId     String   @map("report_id") @db.Uuid
+  report       Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  ruleId       RuleId   @map("rule_id")
+  ruleName     String   @map("rule_name") @db.VarChar(120)
+  summary      String
+  /// Lista [{ label, value }] (EvidenceItem del contrato). Enlaces y dominios ya desactivados.
+  evidence     Json
+  rulesVersion String   @map("rules_version") @db.VarChar(32)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([reportId])
+  @@map("findings")
+}
+
+/// Enlace extraído del cuerpo. Nunca se visita (D-017).
+model ReportLink {
+  id            String  @id @default(uuid()) @db.Uuid
+  reportId      String  @map("report_id") @db.Uuid
+  report        Report  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// Orden de aparición en el correo, desde 0.
+  position      Int
+  /// Texto visible del enlace (texto del correo: se escapa siempre).
+  displayText   String? @map("display_text")
+  /// URL normalizada sin query ni fragmento.
+  normalizedUrl String  @map("normalized_url")
+  /// Forma desactivada para mostrar, por ejemplo hxxp://dominio[.]com.
+  defangedUrl   String  @map("defanged_url")
+  domain        String? @db.VarChar(253)
+
+  @@unique([reportId, position])
+  @@map("report_links")
 }

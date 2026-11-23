@@ -1,0 +1,15 @@
+From: Soporte Banco <soporte@banco-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Verifica tu cuenta
+Date: Tue, 10 Nov 2026 17:29:00 -0600
+Message-ID: <fx017@ejemplo.invalid>
+Reply-To: soporte-urgente@correo-desconocido.invalid
+Authentication-Results: mx.ejemplo.invalid; spf=pass
+ smtp.mailfrom=banco-ejemplo.example; dkim=pass
+ header.d=banco-ejemplo.example; dmarc=pass
+Received-SPF: pass (ejemplo.invalid: dominio autorizado)
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Responde con tus datos.

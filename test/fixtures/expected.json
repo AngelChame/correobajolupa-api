@@ -1,0 +1,452 @@
+{
+  "version": 2,
+  "institutionalDomains": [
+    "universidad-ejemplo.example"
+  ],
+  "notes": "Dominios con TLD reservados (.example, .invalid) e IP del rango de documentación 203.0.113.0/24, salvo L06 (boletín real anonimizado). Las evidencias van en forma cruda: la API las devuelve desactivadas (D-017), así que la prueba compara contra el valor antes de desactivar o desactiva el esperado. Reglas y estados usan los valores del contrato (RuleId, ReportStatus, LimitedReason).",
+  "cases": [
+    {
+      "id": "L01-boletin-legitimo",
+      "input": "eml",
+      "file": "emails/L01-boletin-legitimo.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "notes": "Boletín inventado. Tiene un píxel de rastreo del mismo dominio: no es hallazgo."
+    },
+    {
+      "id": "L02-aviso-institucional-legitimo",
+      "input": "eml",
+      "file": "emails/L02-aviso-institucional-legitimo.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "notes": "Reply-To con otro buzón pero el MISMO dominio: la regla 1 no dispara (propuesta: comparar dominios; por confirmar). Subdominio portal.<institucional>: la regla 3 no dispara (es el dominio configurado, no uno parecido)."
+    },
+    {
+      "id": "L03-texto-plano-simple",
+      "input": "eml",
+      "file": "emails/L03-texto-plano-simple.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "notes": "Sin enlaces ni adjuntos."
+    },
+    {
+      "id": "L04-texto-enlace-mismo-host",
+      "input": "eml",
+      "file": "emails/L04-texto-enlace-mismo-host.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "notes": "El texto parece URL y el destino tiene el mismo host (distinta ruta y query): la regla 2 no dispara."
+    },
+    {
+      "id": "L05-latin1-quoted-printable",
+      "input": "eml",
+      "file": "emails/L05-latin1-quoted-printable.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "decodedText": [
+        "Información de la acción",
+        "mañana"
+      ],
+      "notes": "Decodificación correcta de Latin-1 y quoted-printable (asunto, remitente y cuerpo). Sin hallazgos."
+    },
+    {
+      "id": "L06-boletin-real-anonimizado",
+      "input": "eml",
+      "file": "emails/L06-boletin-real-anonimizado.eml",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-02"
+      ],
+      "notes": "Único correo real del conjunto: boletín legítimo enviado con Mailchimp, anonimizado (destinatario, ID de suscriptor y parámetros de rastreo). Falso positivo de referencia. Todos los enlaces apuntan a us.list-manage.com, distinto del dominio del remitente: no es ninguna de las reglas. Los textos de enlace no parecen URL (R2 no dispara). La IP de Received y el mailto: de List-Unsubscribe están en encabezados: R5 y R6 solo miran enlaces del cuerpo. Las firmas DKIM y ARC ya no validan tras anonimizar (D-016: solo informativo)."
+    },
+    {
+      "id": "R1-reply-to-distinto",
+      "input": "eml",
+      "file": "emails/R1-reply-to-distinto.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R1"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "soporte@banco-ejemplo.example",
+        "soporte-urgente@correo-desconocido.invalid"
+      ]
+    },
+    {
+      "id": "R2-texto-enlace-enganoso",
+      "input": "eml",
+      "file": "emails/R2-texto-enlace-enganoso.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R2"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "https://www.banco-ejemplo.example/acceso",
+        "cuenta-seguridad.example"
+      ]
+    },
+    {
+      "id": "R3a-dominio-parecido-en-enlace",
+      "input": "eml",
+      "file": "emails/R3a-dominio-parecido-en-enlace.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R3"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "un1versidad-ejemplo.example"
+      ],
+      "notes": "Reemplaza la i por 1 respecto de universidad-ejemplo.example (configurado). Remitente con el dominio verdadero."
+    },
+    {
+      "id": "R3b-dominio-parecido-rn-por-m",
+      "input": "eml",
+      "file": "emails/R3b-dominio-parecido-rn-por-m.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R3"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "universidad-ejernplo.example"
+      ],
+      "notes": "'rn' imita a 'm'. La regla 3 también debe mirar el dominio del remitente, no solo los enlaces. Caso difícil."
+    },
+    {
+      "id": "R4-dominio-internacionalizado",
+      "input": "eml",
+      "file": "emails/R4-dominio-internacionalizado.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R4"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "xn--bnco-ejemplo-x9j.example"
+      ],
+      "notes": "El destino es xn--bnco-ejemplo-x9j.example (punycode de bаnco-ejemplo.example, con una 'а' cirílica). Se debe mostrar también la forma Unicode. Ojo: un enlace con IDN legítimo (p. ej. 'mañana.example') también dispara la regla 4; es una señal, no una prueba."
+    },
+    {
+      "id": "R5a-destino-ip",
+      "input": "eml",
+      "file": "emails/R5a-destino-ip.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R5"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "203.0.113.45"
+      ],
+      "notes": "203.0.113.0/24 es un rango reservado para documentación."
+    },
+    {
+      "id": "R5b-ip-decimal-y-hexadecimal",
+      "input": "eml",
+      "file": "emails/R5b-ip-decimal-y-hexadecimal.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R5"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "3405803821",
+        "0xCB00712D"
+      ],
+      "notes": "Ambas formas equivalen a 203.0.113.45. El normalizador debe reconocerlas como IP. Caso difícil."
+    },
+    {
+      "id": "R6a-esquema-no-permitido",
+      "input": "eml",
+      "file": "emails/R6a-esquema-no-permitido.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R6"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-17"
+      ],
+      "evidence": [
+        "javascript:",
+        "data:"
+      ],
+      "notes": "Los enlaces deben quedar desactivados en la interfaz (P-17)."
+    },
+    {
+      "id": "R6b-esquema-ofuscado",
+      "input": "eml",
+      "file": "emails/R6b-esquema-ofuscado.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R6"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-17"
+      ],
+      "evidence": [
+        "JaVaScRiPt:",
+        "vbscript:"
+      ],
+      "notes": "Mayúsculas mezcladas, tabulación y entidades HTML dentro del esquema. Después de decodificar entidades y quitar espacios en blanco los cuatro son esquemas no permitidos. Caso difícil."
+    },
+    {
+      "id": "R7a-doble-extension",
+      "input": "eml",
+      "file": "emails/R7a-doble-extension.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R7"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "factura-0042.pdf.exe"
+      ]
+    },
+    {
+      "id": "R7b-tipo-inconsistente",
+      "input": "eml",
+      "file": "emails/R7b-tipo-inconsistente.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R7"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "estado-de-cuenta.pdf",
+        "application/zip"
+      ],
+      "notes": "Nombre .pdf, tipo declarado application/zip y bytes que empiezan con 'PK'. El contenido es texto inventado, no un archivo real."
+    },
+    {
+      "id": "C1-combinado-reglas-1-2-5",
+      "input": "eml",
+      "file": "emails/C1-combinado-reglas-1-2-5.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R1",
+        "R2",
+        "R5"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "notes": "Tres reglas a la vez: sirve para probar que cada hallazgo guarda su propia evidencia y para decidir pesos y umbrales (pendiente)."
+    },
+    {
+      "id": "C2-autenticacion-falsa",
+      "input": "eml",
+      "file": "emails/C2-autenticacion-falsa.eml",
+      "kind": "phishing",
+      "expectedRules": [
+        "R1"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-20"
+      ],
+      "notes": "Cabeceras SPF/DKIM/DMARC \"pass\" inventadas: se muestran como información (sin sumar ni restar puntaje) y no impiden el hallazgo de la regla 1. En un .eml subido pueden estar alteradas."
+    },
+    {
+      "id": "H01-html-hostil",
+      "input": "eml",
+      "file": "emails/H01-html-hostil.eml",
+      "kind": "hostile",
+      "expectedRules": [
+        "R5"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01",
+        "D-035"
+      ],
+      "forbiddenInSanitizedHtml": [
+        "<script",
+        "onerror",
+        "onload",
+        "onclick",
+        "<iframe",
+        "<form",
+        "<object",
+        "<embed",
+        "<base",
+        "http-equiv",
+        "javascript:",
+        "@import",
+        "position:fixed",
+        "203.0.113.45/track.gif"
+      ],
+      "mustKeepInSanitizedHtml": [
+        "Texto visible legítimo."
+      ],
+      "notes": "Comprueba el sanitizador y la CSP del visor (D-035). La regla 5 sale del único enlace <a> (destino IP). Los demás destinos con IP (iframe, form, object, embed, base, img) y el 'javascript:' dentro del CSS no son enlaces <a>: por ahora no generan hallazgo (por decidir si se amplía la extracción). El HTML saneado no debe contener nada de la lista 'forbiddenInSanitizedHtml'."
+    },
+    {
+      "id": "H02-multipart-truncado",
+      "input": "eml",
+      "file": "emails/H02-multipart-truncado.eml",
+      "kind": "hostile",
+      "expectedRules": [],
+      "status": "limited",
+      "limitedReason": "parse_error",
+      "tests": [
+        "P-03"
+      ],
+      "decodedText": [
+        "Primera parte completa."
+      ],
+      "notes": "Falta el delimitador final y la segunda parte está cortada. No debe fallar: se analiza lo que se pueda y se avisa que el análisis es limitado (D-004)."
+    },
+    {
+      "id": "H03-sin-from-ni-cuerpo",
+      "input": "eml",
+      "file": "emails/H03-sin-from-ni-cuerpo.eml",
+      "kind": "hostile",
+      "expectedRules": [],
+      "status": "limited",
+      "limitedReason": "missing_headers",
+      "tests": [
+        "P-03"
+      ],
+      "notes": "Sin From, To, Date ni Message-ID, y cuerpo vacío. Propuesta: se acepta y queda como análisis limitado. Por decidir: rechazar con 400 `validation_error`."
+    },
+    {
+      "id": "H04-multipart-anidado-profundo",
+      "input": "eml",
+      "file": "emails/H04-multipart-anidado-profundo.eml",
+      "kind": "hostile",
+      "expectedRules": [],
+      "status": "limited",
+      "limitedReason": "parse_error",
+      "tests": [
+        "P-03"
+      ],
+      "notes": "40 niveles de multipart anidado. El lector debe poner un límite de profundidad y terminar rápido, sin desbordar la pila. Un límite razonable sería 10 a 20 niveles (por decidir)."
+    },
+    {
+      "id": "T01-pegado-con-encabezados",
+      "input": "paste",
+      "file": "paste/T01-pegado-con-encabezados.txt",
+      "kind": "phishing",
+      "expectedRules": [
+        "R1"
+      ],
+      "status": "completed",
+      "limitedReason": null,
+      "tests": [
+        "P-01"
+      ],
+      "evidence": [
+        "soporte@banco-ejemplo.example",
+        "pagos@correo-desconocido.invalid"
+      ],
+      "notes": "Texto pegado con encabezados completos (como sale de \"Mostrar original\"). Se analiza igual que un .eml. La IP de Received está en un encabezado: R5 no dispara."
+    },
+    {
+      "id": "T02-pegado-solo-cuerpo",
+      "input": "paste",
+      "file": "paste/T02-pegado-solo-cuerpo.txt",
+      "kind": "legitimate",
+      "expectedRules": [],
+      "status": "limited",
+      "limitedReason": "missing_headers",
+      "tests": [
+        "P-03"
+      ],
+      "notes": "Solo el cuerpo, sin encabezados ni enlaces. Debe quedar limitado y nunca mostrarse como \"sin señales\" (D-004)."
+    },
+    {
+      "id": "T03-pegado-cuerpo-con-ip",
+      "input": "paste",
+      "file": "paste/T03-pegado-cuerpo-con-ip.txt",
+      "kind": "phishing",
+      "expectedRules": [
+        "R5"
+      ],
+      "status": "limited",
+      "limitedReason": "missing_headers",
+      "tests": [
+        "P-01",
+        "P-03"
+      ],
+      "evidence": [
+        "203.0.113.45"
+      ],
+      "notes": "Solo el cuerpo, con una URL en texto plano cuyo destino es una IP. Limitado por falta de encabezados, pero las reglas del cuerpo sí corren. R5 depende de extraer URL del texto plano (decisión abierta 7 del README)."
+    }
+  ]
+}

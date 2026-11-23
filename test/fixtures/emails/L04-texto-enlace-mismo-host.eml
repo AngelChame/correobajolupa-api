@@ -1,0 +1,11 @@
+From: Tienda Ejemplo <pedidos@tienda-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Tu pedido 1042
+Date: Tue, 10 Nov 2026 15:58:00 -0600
+Message-ID: <fx004@ejemplo.invalid>
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<p>Seguimiento: <a href=3D"https://tienda-ejemplo.example/pedidos/1042?utm=3D=
+correo">https://tienda-ejemplo.example/pedidos/1042</a></p>

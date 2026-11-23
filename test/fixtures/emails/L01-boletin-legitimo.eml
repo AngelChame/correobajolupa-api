@@ -1,0 +1,28 @@
+From: =?utf-8?q?Bolet=C3=ADn?= Ejemplo <noticias@boletin-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Novedades de noviembre
+Date: Tue, 10 Nov 2026 15:37:00 -0600
+Message-ID: <fx001@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============4112019343303403063=="
+
+--===============4112019343303403063==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hola. Novedades del mes: https://boletin-ejemplo.example/noviembre
+Baja: https://boletin-ejemplo.example/baja?id=abc123
+
+--===============4112019343303403063==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><h1>Novedades de noviembre</h1><p><a href=3D"https://boletin-ejem=
+plo.example/noviembre">L=C3=A9elas aqu=C3=AD</a></p><p><a href=3D"https://bol=
+etin-ejemplo.example/baja?id=3Dabc123">Darme de baja</a></p><img src=3D"https=
+://boletin-ejemplo.example/pixel.gif?u=3Dabc123" width=3D"1" height=3D"1"></b=
+ody></html>
+
+--===============4112019343303403063==--

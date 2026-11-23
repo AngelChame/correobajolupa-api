@@ -1,3 +1,6 @@
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
 import request from 'supertest';
 import { expect } from 'vitest';
 import { createApp } from '../../src/app.js';
@@ -6,6 +9,8 @@ import { Session } from '../../src/contract/schemas/auth.js';
 import { createDb } from '../../src/db/client.js';
 import type { Role } from '../../src/generated/prisma/enums.js';
 import { createLogger } from '../../src/logger.js';
+import { createDiskStorage } from '../../src/storage/disk.js';
+import type { ReportStorage } from '../../src/storage/storage.js';
 import { testConfig } from '../helpers.js';
 import { testDatabaseUrl } from './test-db.js';
 
@@ -17,14 +22,28 @@ export const CLAVE = 'una-clave-de-prueba-larga';
 const claveHash = await hashPassword(CLAVE);
 
 export async function limpiarBase(): Promise<void> {
-  await db.$executeRawUnsafe('TRUNCATE audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
 }
 
-export function crearApp(overrides: NodeJS.ProcessEnv = {}) {
+/** Carpeta temporal de este proceso de pruebas; se borra completa al salir. */
+const RAIZ_ALMACENAMIENTO = mkdtempSync(join(tmpdir(), 'cbl-reports-'));
+process.on('exit', () => rmSync(RAIZ_ALMACENAMIENTO, { recursive: true, force: true }));
+
+/** App de prueba con base real y almacenamiento en una subcarpeta temporal propia (storageDir). */
+export function crearApp(overrides: NodeJS.ProcessEnv = {}, opciones: { storage?: ReportStorage } = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
-  const config = testConfig({ DATABASE_URL: testDatabaseUrl(), ...overrides });
-  return { app: createApp({ logger, db, config, decoyHash }), lineas, logger, config };
+  const storageDir = mkdtempSync(join(RAIZ_ALMACENAMIENTO, 'app-'));
+  const config = testConfig({ DATABASE_URL: testDatabaseUrl(), STORAGE_DIR: storageDir, ...overrides });
+  const storage = opciones.storage ?? createDiskStorage(storageDir);
+  return { app: createApp({ logger, db, config, decoyHash, storage }), lineas, logger, config, storageDir, storage };
+}
+
+/** Archivos que hay en la carpeta del almacenamiento, como rutas relativas "reportId/nombre". */
+export function archivosEn(storageDir: string): string[] {
+  return readdirSync(storageDir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => join(e.parentPath, e.name).slice(storageDir.length + 1).replaceAll(sep, '/'));
 }
 
 export type Sesion = { userId: string; cookie: string; csrf: string; token: string };

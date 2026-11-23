@@ -1,0 +1,16 @@
+From: Prueba <prueba@correo-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Multipart sin cierre
+Date: Tue, 10 Nov 2026 18:00:00 -0600
+Message-ID: <fx-h02@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="LIMITE"
+
+--LIMITE
+Content-Type: text/plain; charset=utf-8
+
+Primera parte completa.
+--LIMITE
+Content-Type: text/html; charset=utf-8
+
+<p>Segunda parte cortada 

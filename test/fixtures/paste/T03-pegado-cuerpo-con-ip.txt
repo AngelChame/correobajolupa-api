@@ -1,0 +1,7 @@
+Estimado usuario:
+
+Tu paquete está retenido en aduana. Para liberarlo confirma tus datos en
+http://203.0.113.45/aduana/liberar antes de 24 horas.
+
+Atentamente,
+Mensajería

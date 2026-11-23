@@ -11,7 +11,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE report_links, findings, reports, audit_events, sessions, users');
 });
 
 function crearUsuario(email = 'ana@ejemplo.invalid') {
@@ -38,7 +38,7 @@ describe('migración inicial', () => {
 
     const tablas = await db.$queryRaw<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
-    expect(tablas.map((t) => t.table_name)).toEqual(['_prisma_migrations', 'audit_events', 'sessions', 'users']);
+    expect(tablas.map((t) => t.table_name)).toEqual(['_prisma_migrations', 'audit_events', 'findings', 'report_links', 'reports', 'sessions', 'users']);
   });
 
   it('crea un usuario con los valores por defecto', async () => {

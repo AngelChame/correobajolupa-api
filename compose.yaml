@@ -1,5 +1,7 @@
-# Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API.
-# Llegan después: Redis y el trabajador (M1), ClamAV (M2), Dovecot (M4), el front (D-031) y el proxy (nº 28).
+# Pila de CorreoBajoLupa (RNF-23). M0: PostgreSQL, migraciones y la API; M1: volumen de reportes y
+# worker de análisis (cola en PostgreSQL, D-054).
+# Front (D-031) con el perfil web: docker compose --profile web up -d --build (ver README).
+# Llegan después: ClamAV (M2), Dovecot (M4) y el proxy con HTTPS (nº 28).
 # Uso: cp .env.example .env  →  cambia las contraseñas  →  docker compose up -d --build
 
 name: correobajolupa
@@ -9,6 +11,10 @@ x-logging: &logging
   options:
     max-size: "10m"
     max-file: "3"
+
+# Archivos de reportes (D-038). Lo montan la API y, cuando llegue, el worker, en la misma ruta
+# que STORAGE_DIR. Nadie más: ni la base ni el front lo ven.
+x-reports-volume: &reports-volume reports-data:/data/reports
 
 services:
   db:
@@ -46,7 +52,7 @@ services:
       context: .
       target: runtime
     # Solo las variables que la API usa hoy; el resto del .env no entra al contenedor.
-    # Se agregan aquí conforme llegan los módulos (Redis en M1, ClamAV en M2...).
+    # Se agregan aquí conforme llegan los módulos (ClamAV en M2...).
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -66,6 +72,19 @@ services:
       RATE_LIMIT_LOGIN_WINDOW_MIN: ${RATE_LIMIT_LOGIN_WINDOW_MIN:-}
       # Límite global por IP en /api/v1 (salvo /health). Sin proxy todos comparten IP (D-048).
       RATE_LIMIT_GLOBAL_PER_MINUTE: ${RATE_LIMIT_GLOBAL_PER_MINUTE:-}
+      # Saltos de proxy de confianza: 0 mientras no haya proxy delante (nº 28).
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      # M1: reportes. STORAGE_DIR es fija: tiene que coincidir con el punto de montaje del volumen.
+      STORAGE_DIR: /data/reports
+      MAX_EML_BYTES: ${MAX_EML_BYTES:-}
+      MAX_PASTE_BYTES: ${MAX_PASTE_BYTES:-}
+      REPORTS_PER_USER_PER_HOUR: ${REPORTS_PER_USER_PER_HOUR:-}
+      INSTITUTIONAL_DOMAINS: ${INSTITUTIONAL_DOMAINS:-}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+    volumes:
+      - *reports-volume
     depends_on:
       db:
         condition: service_healthy
@@ -75,6 +94,56 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     # Arranca sola cuando la instancia del Learner Lab se reinicia (D-009).
+    restart: unless-stopped
+    logging: *logging
+
+  # Worker de análisis (D-054): misma imagen que la API, otro comando. Toma reportes de la tabla
+  # reports (FOR UPDATE SKIP LOCKED) y lee sus archivos del mismo volumen. Sin puertos.
+  worker:
+    build:
+      context: .
+      target: runtime
+    command: ["node", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-correobajolupa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-correobajolupa}
+      STORAGE_DIR: /data/reports
+      INSTITUTIONAL_DOMAINS: ${INSTITUTIONAL_DOMAINS:-}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+      CLEANUP_INTERVAL_MIN: ${CLEANUP_INTERVAL_MIN:-}
+    volumes:
+      - *reports-volume
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # La imagen trae el healthcheck HTTP de la API; el worker no escucha en ningún puerto.
+    healthcheck:
+      disable: true
+    # Tiempo para terminar el análisis en curso tras SIGTERM (el worker sale solo a los 25 s).
+    stop_grace_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  # Front de Cesar (D-031): nginx sirve la SPA y reenvía /api/* a la API (mismo origen, D-052).
+  # Solo con --profile web; sin el repo al lado, el Compose normal no lo necesita.
+  # Con este perfil, la API debe confiar en UN salto de proxy: TRUST_PROXY_HOPS=1 en el .env
+  # (ver README; nunca true).
+  web:
+    profiles: [web]
+    build:
+      context: ${WEB_REPO_DIR:-../correobajolupa-web}
+    environment:
+      API_UPSTREAM: api:3000
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
     logging: *logging
 
@@ -97,5 +166,29 @@ services:
       timeout: 3s
       retries: 15
 
+  # `npm run test:int:docker`: las pruebas de integración dentro de Linux (como el CI), contra
+  # db-test. Imagen: etapa deps del Dockerfile (node:24.22.3-bookworm-slim con openssl para Prisma).
+  # El código se monta de la máquina; node_modules y el cliente generado de Prisma van en volúmenes
+  # propios, así nunca se usan ni se pisan los de Windows.
+  test-int:
+    profiles: [test]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app
+      - test-node-modules:/app/node_modules
+      - test-prisma-generated:/app/src/generated
+    environment:
+      DATABASE_URL: postgresql://cbl_test:cbl_test@db-test:5432/correobajolupa_test
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx prisma generate && npm run test:int"]
+    depends_on:
+      db-test:
+        condition: service_healthy
+
 volumes:
   db-data:
+  reports-data:
+  test-node-modules:
+  test-prisma-generated:

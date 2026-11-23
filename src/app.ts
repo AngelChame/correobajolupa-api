@@ -11,6 +11,8 @@ import type { Db } from './db/client.js';
 import { sendError } from './http/errors.js';
 import { globalRateLimit } from './http/global-limit.js';
 import { noStore, securityHeaders } from './http/security.js';
+import { createReportsRouter } from './reports/routes.js';
+import type { ReportStorage } from './storage/storage.js';
 import { createUsersRouter } from './users/routes.js';
 
 /** Se acepta el X-Request-Id que llega solo si es corto y sin caracteres raros; si no, se genera uno. */
@@ -18,6 +20,12 @@ const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** Ruta sin query string: los parámetros nunca van a los registros (D-036). */
 const sinQuery = (url: string) => url.split('?')[0] ?? url;
+
+/**
+ * POST /reports/paste lee su cuerpo en la propia ruta. Express enruta sin distinguir mayúsculas
+ * ni la barra final, así que se compara igual (si no, /Reports/Paste/ pasaría por el parser global).
+ */
+const esRutaDePegado = (path: string) => path.toLowerCase().replace(/\/+$/, '') === '/api/v1/reports/paste';
 
 /** Ruta del healthcheck; no se registra en cada petición (ver autoLogging). */
 const HEALTH_PATH = '/api/v1/health';
@@ -28,16 +36,22 @@ export type AppDeps = {
   config: Config;
   /** Hash señuelo de Argon2id, calculado una vez al arrancar (createDecoyHash). */
   decoyHash: string;
+  /** Archivos de los reportes (D-038). */
+  storage: ReportStorage;
 };
 
-export function createApp({ logger, db, config, decoyHash }: AppDeps) {
+export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
-  // 'trust proxy' queda APAGADO a propósito hasta que exista el proxy inverso (nº 28).
-  // Con él apagado, req.ip es la dirección de quien abre la conexión TCP; en el Compose es la
-  // del puente de Docker, así que el límite por IP lo comparten todas las personas. Al poner
-  // el proxy: app.set('trust proxy', 1) (un salto) y revisar los límites. Nunca 'true' a
-  // ciegas: permitiría falsificar la IP con X-Forwarded-For.
+  // 'trust proxy' depende de TRUST_PROXY_HOPS (0 por defecto = apagado, mientras no exista el
+  // proxy inverso, nº 28). Apagado, req.ip es la dirección de quien abre la conexión TCP; en el
+  // Compose es la del puente de Docker, así que el límite por IP lo comparten todas las personas.
+  // Con el proxy delante: TRUST_PROXY_HOPS=1 (un salto) y revisar los límites. Siempre un
+  // número de saltos, nunca 'true': confiaría en cualquier X-Forwarded-For y la IP se podría
+  // falsificar (config.ts solo acepta enteros).
+  if (config.TRUST_PROXY_HOPS > 0) {
+    app.set('trust proxy', config.TRUST_PROXY_HOPS);
+  }
 
   app.use(
     pinoHttp({
@@ -70,8 +84,18 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   // Límite global por IP en /api/v1 (salvo /health), antes de leer el cuerpo.
   app.use('/api/v1', globalRateLimit(config));
 
-  // Límite provisional; los de reportes y archivos se fijan con la nº 5.
-  app.use(express.json({ limit: '100kb' }));
+  // Parser JSON global de 100 kb, salvo POST /reports/paste: esa ruta admite hasta
+  // MAX_PASTE_BYTES y monta su propio parser DESPUÉS de la sesión y del CSRF (src/reports/routes.ts),
+  // así una petición sin sesión o sin token se rechaza sin leer hasta 1 MiB. Los .eml van por
+  // multipart (multer, también después de la sesión).
+  const jsonGlobal = express.json({ limit: '100kb' });
+  app.use((req, res, next) => {
+    if (esRutaDePegado(req.path)) {
+      next();
+      return;
+    }
+    jsonGlobal(req, res, next);
+  });
 
   // Sesión de la cookie cbl_session (D-034): si es válida queda en req.auth.
   app.use(loadSession(db, config.COOKIE_SECURE));
@@ -84,6 +108,7 @@ export function createApp({ logger, db, config, decoyHash }: AppDeps) {
   });
   v1.use('/auth', createAuthRouter({ db, config, decoyHash, limiters: createAuthLimiters(config) }));
   v1.use('/users', createUsersRouter({ db }));
+  v1.use('/reports', createReportsRouter({ db, config, storage }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

@@ -1,0 +1,11 @@
+From: Aviso <aviso@servicio-ejemplo.example>
+To: persona.reportante@universidad-ejemplo.example
+Subject: Documento compartido
+Date: Tue, 10 Nov 2026 16:54:00 -0600
+Message-ID: <fx012@ejemplo.invalid>
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<p><a href=3D"javascript:alert(1)">Abrir documento</a> <a href=3D"data:text/h=
+tml;base64,PHNjcmlwdD4vKnNpbnRldGljbyovPC9zY3JpcHQ+">Ver vista previa</a></p>
