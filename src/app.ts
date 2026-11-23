@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { csrfGuard } from './auth/csrf.js';
 import { createAuthLimiters } from './auth/rate-limit.js';
+import { createAuditLogRouter } from './audit-log/routes.js';
 import { createAuthRouter } from './auth/routes.js';
 import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
@@ -16,6 +17,7 @@ import { createIndicatorsRouter } from './indicators/routes.js';
 import { createLabRouter } from './lab/routes.js';
 import { labProviderFactory } from './lab/sync.js';
 import type { MailProvider } from './mail/provider.js';
+import { createQuarantineRouter } from './quarantine/routes.js';
 import { createReportsRouter } from './reports/routes.js';
 import type { ReportStorage } from './storage/storage.js';
 import { createUsersRouter } from './users/routes.js';
@@ -120,11 +122,16 @@ export function createApp({ logger, db, config, decoyHash, storage, openMailProv
   v1.use('/users', createUsersRouter({ db }));
   v1.use('/reports', createReportsRouter({ db, config, storage }));
   // Laboratorio IMAP (M4): /mailboxes y /messages. Independiente del modo real (D-003).
-  v1.use(createLabRouter({ db, config, storage, openProvider: openMailProvider ?? labProviderFactory(config) }));
+  const openProvider = openMailProvider ?? labProviderFactory(config);
+  v1.use(createLabRouter({ db, config, storage, openProvider }));
   // Indicadores y lista de exclusión (M5): /indicators y /exclusions.
   v1.use(createIndicatorsRouter({ db, config }));
-  // Incidentes y comentarios (M6): /incidents. La cuarentena (M7) cuelga de aquí.
+  // Incidentes y comentarios (M6): /incidents.
   v1.use(createIncidentsRouter({ db }));
+  // Cuarentena, acciones y restauración (M7): /incidents/{id}/quarantine, /incidents/{id}/actions y /actions/{id}/restore.
+  v1.use(createQuarantineRouter({ db, config, openProvider }));
+  // Consulta de la auditoría (M7): /audit, solo lectura.
+  v1.use(createAuditLogRouter({ db }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {

@@ -14,7 +14,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE incident_comments, incident_indicators, incident_reports, incidents, indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE quarantine_actions, incident_comments, incident_indicators, incident_reports, incidents, indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
 });
 
 async function crearReporte(datos: { status?: 'queued' | 'limited' | 'completed'; limitedReason?: 'parse_error' | null } = {}) {

@@ -1,4 +1,4 @@
-import { MailUnavailableError, type FolderListing, type MailLocation, type MailProvider } from '../../src/mail/provider.js';
+import { MailUnavailableError, MoveUnconfirmedError, type FolderListing, type MailLocation, type MailProvider } from '../../src/mail/provider.js';
 
 // Proveedor de correo en memoria para las pruebas de integración: simula INBOX y Cuarentena de un
 // buzón del laboratorio (UID por carpeta, UIDVALIDITY, MOVE y APPEND), sin Dovecot.
@@ -20,6 +20,16 @@ export class FakeServer {
   failAppend = false;
   opened = 0;
   appended = 0;
+  /** MOVE que sí cambiaron algo en el servidor. */
+  moved = 0;
+  /** Después de tantos MOVE la conexión "se corta": toda orden siguiente falla (P-14). */
+  cutAfterMoves: number | null = null;
+  /** MOVE falla sin mover nada (el servidor dijo NO). */
+  failMove = false;
+  /** MOVE mueve el mensaje pero no devuelve el UID nuevo (sin evidencia). */
+  moveWithoutEvidence = false;
+  /** Se llama justo después de mover (para simular fallos de la base en ese momento). */
+  onMove: ((messageId: string | null) => Promise<void>) | null = null;
 
   add(raw: Buffer, location: MailLocation = 'inbox'): number {
     const f = this.folders[location];
@@ -51,6 +61,10 @@ export class FakeServer {
     f.nextUid = 1000;
     f.messages = f.messages.map((m) => ({ uid: f.nextUid++, raw: m.raw }));
   }
+  /** La conexión ya se cortó (cutAfterMoves alcanzado). */
+  cut(): boolean {
+    return this.cutAfterMoves !== null && this.moved >= this.cutAfterMoves;
+  }
   /** Abre el proveedor como lo haría openProvider (falla si failOpen). */
   async open(): Promise<MailProvider> {
     if (this.failOpen) throw new MailUnavailableError();
@@ -76,6 +90,27 @@ export class FakeServer {
         server.appended++;
         const uid = server.add(Buffer.from(raw), location);
         return { uid, uidValidity: server.folders[location].uidValidity };
+      },
+      async inspect(location, uid) {
+        if (server.cut()) throw new MailUnavailableError();
+        await wait();
+        const f = server.folders[location];
+        const m = f.messages.find((x) => x.uid === uid);
+        return { uidValidity: f.uidValidity, found: Boolean(m), messageId: m ? messageIdOf(m.raw) : null };
+      },
+      async move(from, to, uid) {
+        if (server.cut()) throw new MoveUnconfirmedError();
+        await wait();
+        if (server.failMove) throw new MoveUnconfirmedError();
+        const stored = server.folders[from].messages.find((x) => x.uid === uid);
+        // Como Dovecot: UID MOVE de un UID que no existe responde OK sin COPYUID.
+        if (!stored) throw new MoveUnconfirmedError();
+        server.folders[from].messages = server.folders[from].messages.filter((m) => m !== stored);
+        const newUid = server.add(stored.raw, to);
+        server.moved++;
+        if (server.onMove) await server.onMove(messageIdOf(stored.raw));
+        if (server.moveWithoutEvidence) throw new MoveUnconfirmedError();
+        return { uid: newUid, uidValidity: server.folders[to].uidValidity };
       },
       async close() {},
     };

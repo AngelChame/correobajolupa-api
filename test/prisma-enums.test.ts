@@ -5,6 +5,7 @@ import { IncidentStatus } from '../src/contract/schemas/incidents.js';
 import { IndicatorStatus, IndicatorType } from '../src/contract/schemas/indicators.js';
 import { MailboxLabel, MessageLocation, SyncStatus } from '../src/contract/schemas/lab.js';
 import * as contrato from '../src/contract/schemas/reports.js';
+import { ActionStatus, ActionType } from '../src/contract/schemas/response.js';
 import * as prisma from '../src/generated/prisma/enums.js';
 
 // Los enums de la base (prisma/schema.prisma) y los del contrato deben tener exactamente
@@ -23,6 +24,8 @@ const pares = [
   ['IndicatorType', prisma.IndicatorType, IndicatorType.options],
   ['IndicatorStatus', prisma.IndicatorStatus, IndicatorStatus.options],
   ['IncidentStatus', prisma.IncidentStatus, IncidentStatus.options],
+  ['ActionType', prisma.ActionType, ActionType.options],
+  ['ActionStatus', prisma.ActionStatus, ActionStatus.options],
 ] as const;
 
 describe('enums de Prisma = enums del contrato', () => {
