@@ -3531,6 +3531,7 @@
           "value": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 2048,
             "description": "Se normaliza al proponer: dominio en minúsculas y punycode; URL sin query ni fragmento; SHA-256 en minúsculas; remitente en minúsculas."
           },
           "reportId": {
@@ -3540,7 +3541,8 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3570,10 +3572,12 @@
         "properties": {
           "domain": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 253
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3617,8 +3621,16 @@
             "maxLength": 120
           },
           "description": {
-            "type": "string",
-            "maxLength": 2000
+            "description": "Nueva descripción. `null` la borra; si se omite, no cambia.",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/IncidentStatus"

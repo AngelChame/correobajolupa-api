@@ -27,12 +27,12 @@ export const IndicatorList = pageOf(Indicator, 'IndicatorList');
 export const ProposeIndicatorBody = z
   .object({
     type: IndicatorType,
-    value: z.string().min(1).meta({
+    value: z.string().min(1).max(2048).meta({
       description:
         'Se normaliza al proponer: dominio en minúsculas y punycode; URL sin query ni fragmento; SHA-256 en minúsculas; remitente en minúsculas.',
     }),
     reportId: z.uuid().optional().meta({ description: 'Obligatorio para el reportante: solo propone desde un reporte suyo.' }),
-    note: z.string().optional(),
+    note: z.string().max(500).optional(),
   })
   .meta({ id: 'ProposeIndicatorBody' });
 
@@ -78,7 +78,7 @@ export const ExclusionList = z.object({ items: z.array(Exclusion) }).meta({ id: 
 
 export const CreateExclusionBody = z
   .object({
-    domain: z.string().min(1),
-    reason: z.string().optional(),
+    domain: z.string().min(1).max(253),
+    reason: z.string().max(500).optional(),
   })
   .meta({ id: 'CreateExclusionBody' });

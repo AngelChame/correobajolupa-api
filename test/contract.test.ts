@@ -4,6 +4,8 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { CONTRACT_PATH, render } from '../src/contract/generate.js';
 import { buildDocument } from '../src/contract/document.js';
+import { UpdateIncidentBody } from '../src/contract/schemas/incidents.js';
+import { CreateExclusionBody, ProposeIndicatorBody } from '../src/contract/schemas/indicators.js';
 
 type Operation = {
   operationId?: string;
@@ -79,5 +81,51 @@ describe('contrato OpenAPI (D-033)', () => {
   it('solo salud, registro y entrada son públicos', () => {
     const publicas = operations.filter(({ op }) => Array.isArray(op.security) && op.security.length === 0).map(({ path }) => path);
     expect(publicas.sort()).toEqual(['/auth/login', '/auth/register', '/health']);
+  });
+});
+
+describe('ajustes del contrato 0.3.0 (D-055)', () => {
+  type Propiedad = { maxLength?: number; minLength?: number; type?: unknown; anyOf?: Propiedad[]; description?: string };
+  const contrato = JSON.parse(readFileSync(CONTRACT_PATH, 'utf8')) as {
+    components: { schemas: Record<string, { properties: Record<string, Propiedad>; required?: string[] }> };
+  };
+  const propiedad = (esquema: string, campo: string): Propiedad => contrato.components.schemas[esquema]!.properties[campo]!;
+
+  it('POST /indicators limita value a 2048 y note a 500 caracteres', () => {
+    expect(propiedad('ProposeIndicatorBody', 'value')).toMatchObject({ minLength: 1, maxLength: 2048 });
+    expect(propiedad('ProposeIndicatorBody', 'note')).toMatchObject({ maxLength: 500 });
+
+    const base = { type: 'domain' as const, value: 'x'.repeat(2048) };
+    expect(ProposeIndicatorBody.safeParse(base).success).toBe(true);
+    expect(ProposeIndicatorBody.safeParse({ ...base, value: 'x'.repeat(2049) }).success).toBe(false);
+    expect(ProposeIndicatorBody.safeParse({ ...base, value: '' }).success).toBe(false);
+    expect(ProposeIndicatorBody.safeParse({ ...base, note: 'n'.repeat(500) }).success).toBe(true);
+    expect(ProposeIndicatorBody.safeParse({ ...base, note: 'n'.repeat(501) }).success).toBe(false);
+  });
+
+  it('POST /exclusions limita domain a 253 y reason a 500 caracteres', () => {
+    expect(propiedad('CreateExclusionBody', 'domain')).toMatchObject({ minLength: 1, maxLength: 253 });
+    expect(propiedad('CreateExclusionBody', 'reason')).toMatchObject({ maxLength: 500 });
+
+    const base = { domain: 'd'.repeat(253) };
+    expect(CreateExclusionBody.safeParse(base).success).toBe(true);
+    expect(CreateExclusionBody.safeParse({ domain: 'd'.repeat(254) }).success).toBe(false);
+    expect(CreateExclusionBody.safeParse({ domain: '' }).success).toBe(false);
+    expect(CreateExclusionBody.safeParse({ ...base, reason: 'r'.repeat(500) }).success).toBe(true);
+    expect(CreateExclusionBody.safeParse({ ...base, reason: 'r'.repeat(501) }).success).toBe(false);
+  });
+
+  it('PATCH /incidents/{incidentId} acepta description null, opcional y con máximo 2000', () => {
+    const description = propiedad('UpdateIncidentBody', 'description');
+    expect(contrato.components.schemas['UpdateIncidentBody']!.required ?? []).not.toContain('description');
+    expect(description.description).toContain('`null` la borra');
+    expect(JSON.stringify(description)).toContain('"type":"null"');
+    expect(JSON.stringify(description)).toContain('"maxLength":2000');
+
+    expect(UpdateIncidentBody.safeParse({ description: null }).success).toBe(true);
+    expect(UpdateIncidentBody.safeParse({}).success).toBe(true);
+    expect(UpdateIncidentBody.safeParse({ description: 'a'.repeat(2000) }).success).toBe(true);
+    expect(UpdateIncidentBody.safeParse({ description: 'a'.repeat(2001) }).success).toBe(false);
+    expect(UpdateIncidentBody.safeParse({ description: 5 }).success).toBe(false);
   });
 });

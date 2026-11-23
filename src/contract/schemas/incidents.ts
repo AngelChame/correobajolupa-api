@@ -56,7 +56,12 @@ export const CreateIncidentBody = z
 export const UpdateIncidentBody = z
   .object({
     title: z.string().min(1).max(120).optional(),
-    description: z.string().max(2000).optional(),
+    description: z
+      .string()
+      .max(2000)
+      .nullable()
+      .optional()
+      .meta({ description: 'Nueva descripción. `null` la borra; si se omite, no cambia.' }),
     status: IncidentStatus.optional(),
   })
   .meta({ id: 'UpdateIncidentBody' });
