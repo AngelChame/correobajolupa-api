@@ -23,7 +23,7 @@ export const CLAVE = 'una-clave-de-prueba-larga';
 const claveHash = await hashPassword(CLAVE);
 
 export async function limpiarBase(): Promise<void> {
-  await db.$executeRawUnsafe('TRUNCATE attachments, report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
   // Laboratorio (M4): los buzones los crea la migración; solo se vacían sus mensajes y su estado.
   await db.$executeRawUnsafe('TRUNCATE indexed_message_attachments, indexed_message_links, indexed_messages');
   await db.$executeRawUnsafe(`UPDATE mailboxes SET last_sync_at = NULL, last_sync_status = 'never', sync_started_at = NULL`);

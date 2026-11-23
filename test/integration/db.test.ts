@@ -11,7 +11,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.$executeRawUnsafe('TRUNCATE attachments, report_links, findings, reports, audit_events, sessions, users');
+  await db.$executeRawUnsafe('TRUNCATE indicators, exclusions, attachments, report_links, findings, reports, audit_events, sessions, users');
 });
 
 function crearUsuario(email = 'ana@ejemplo.invalid') {
@@ -42,10 +42,12 @@ describe('migración inicial', () => {
       '_prisma_migrations',
       'attachments',
       'audit_events',
+      'exclusions',
       'findings',
       'indexed_message_attachments',
       'indexed_message_links',
       'indexed_messages',
+      'indicators',
       'mailboxes',
       'report_links',
       'reports',
