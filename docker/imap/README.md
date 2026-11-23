@@ -18,7 +18,7 @@ Archivos: `Dockerfile`, `dovecot.conf` (configuración completa, sin `conf.d`), 
 
 ## Contraseña
 
-Una sola para los tres buzones: `IMAP_LAB_PASSWORD` del `.env`, **obligatoria** (sin ella el Compose no arranca) y de **16 caracteres o más** (con menos, el contenedor sale con error). Al arrancar, `arranque.sh` la convierte en hash con `doveadm pw -s SHA512-CRYPT` (sal aleatoria), escribe el archivo de usuarios en memoria (`/run/dovecot-lab/users`, permisos 600, nunca en el volumen ni en el repo) y la borra de su entorno antes de ceder el proceso a Dovecot. Nunca se imprime: ni el script ni Dovecot la registran (`auth_debug_passwords = no`).
+Una sola para los tres buzones: `IMAP_LAB_PASSWORD` del `.env`, de **16 caracteres o más**. Sin ella, o si es más corta, el contenedor `imap` sale con error y no arranca; el resto de la pila sigue funcionando. Al arrancar, `arranque.sh` la convierte en hash con `doveadm pw -s SHA512-CRYPT` (sal aleatoria), escribe el archivo de usuarios en memoria (`/run/dovecot-lab/users`, permisos 600, nunca en el volumen ni en el repo) y la borra de su entorno antes de ceder el proceso a Dovecot. Nunca se imprime: ni el script ni Dovecot la registran (`auth_debug_passwords = no`).
 
 Límite conocido: como todos los secretos del Compose, la variable queda en la configuración del contenedor (`docker inspect`). Quien puede usar Docker en la máquina ya puede leerla; es lo mismo que pasa con `POSTGRES_PASSWORD`.
 
@@ -40,7 +40,7 @@ docker compose ps imap            # debe decir (healthy)
 docker compose logs imap          # "usuarios del laboratorio listos" y el arranque de Dovecot
 ```
 
-La API y el worker esperan a que `imap` esté sano (`depends_on: service_healthy`). Si la contraseña falta o es corta, `imap` no arranca y ellos tampoco.
+La API y el worker están en `imap-net`, pero **no dependen** de `imap` (sin `depends_on`): el modo real no puede depender del laboratorio (D-003). Si la contraseña falta o es corta, solo `imap` se niega a arrancar (y `restart: unless-stopped` lo reintenta); la API, el worker y ClamAV arrancan igual, y las rutas del laboratorio responderán 503 mientras el IMAP no esté.
 
 **Healthcheck** (`salud.sh`): Dovecot responde `* OK` en el 143 y `doveadm user student@lab.example` encuentra al usuario. No usa la contraseña.
 
