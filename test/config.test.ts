@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, loadImapLabConfig } from '../src/config.js';
 
 const URL_VALIDA = 'postgresql://usuario:MARCADOR_SECRETO@db:5432/correobajolupa';
 
@@ -119,6 +119,19 @@ describe('loadConfig', () => {
       expect(mensaje).toContain('IMAP_LAB_PASSWORD');
       expect(mensaje).not.toContain('MARCADOR_');
     }
+  });
+
+  it('loadImapLabConfig lee solo las variables del laboratorio, sin DATABASE_URL', () => {
+    expect(loadImapLabConfig({})).toEqual({ IMAP_LAB_HOST: 'imap', IMAP_LAB_PORT: 143 });
+    expect(loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');
+    let mensaje = '';
+    try {
+      loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_CORTO' });
+    } catch (error) {
+      mensaje = (error as Error).message;
+    }
+    expect(mensaje).toContain('IMAP_LAB_PASSWORD');
+    expect(mensaje).not.toContain('MARCADOR_');
   });
 
   it('TRUST_PROXY_HOPS acepta solo un número de saltos, nunca true', () => {

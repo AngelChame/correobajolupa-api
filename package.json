@@ -16,6 +16,7 @@
     "test:int": "vitest run --config vitest.integration.config.ts",
     "test:int:docker": "docker compose --profile test run --rm --build test-int",
     "test:imap:docker": "docker compose --profile test run --rm --build test-imap",
+    "lab:seed": "docker compose --profile tools run --rm --build lab-seed",
     "contract:generate": "tsx src/contract/generate.ts",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"

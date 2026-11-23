@@ -270,6 +270,29 @@ services:
       imap:
         condition: service_healthy
 
+  # `npm run lab:seed`: siembra los 21 mensajes sintéticos de test/fixtures/lab en los buzones del
+  # laboratorio (APPEND a INBOX; idempotente). Solo con --profile tools; corre dentro de imap-net
+  # porque el 143 no se publica. El repo se monta de solo lectura.
+  lab-seed:
+    profiles: [tools]
+    build:
+      context: .
+      target: deps
+    working_dir: /app
+    volumes:
+      - .:/app:ro
+      - test-node-modules:/app/node_modules
+    environment:
+      IMAP_LAB_HOST: imap
+      IMAP_LAB_PORT: "143"
+      IMAP_LAB_PASSWORD: ${IMAP_LAB_PASSWORD:-}
+    networks: [default, imap-net]
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx tsx src/lab/seed.ts"]
+    depends_on:
+      imap:
+        condition: service_healthy
+    restart: "no"
+
 networks:
   default:
   clamav-net:

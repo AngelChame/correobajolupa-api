@@ -39,6 +39,18 @@ const MiB = 1024 * 1024;
 /** Nombre de host o IPv4 (sin esquema, puerto ni ruta). */
 const NOMBRE_DE_HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i;
 
+/**
+ * M4: IMAP del laboratorio (Dovecot, D-043). Puerto 143 sin TLS, solo dentro de la red imap-net
+ * de Docker. Esquema aparte para que la siembra (src/lab/seed.ts) lo lea sin DATABASE_URL.
+ */
+const ImapLabEnv = z.object({
+  IMAP_LAB_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('imap')),
+  IMAP_LAB_PORT: enteroEntre(1, 65535, 143),
+  // Contraseña de los tres buzones del laboratorio. Opcional aquí (la API arranca sin el
+  // laboratorio); con valor, de 16 a 128 caracteres. Nunca se imprime.
+  IMAP_LAB_PASSWORD: opcional(z.string().min(16).max(128)),
+});
+
 /** Variables de entorno que la API necesita hoy. Se agregan conforme llegan los módulos. */
 const Env = z
   .object({
@@ -105,13 +117,8 @@ const Env = z
     // Se escanean los primeros N adjuntos (se registran hasta 50); los demás quedan unsupported.
     MAX_ATTACHMENTS_SCANNED: enteroEntre(1, 50, 20),
 
-    // --- M4: IMAP del laboratorio (Dovecot, D-043). Se validan desde ya; los usan los pasos siguientes. ---
-    // Puerto 143 sin TLS: solo dentro de la red imap-net de Docker.
-    IMAP_LAB_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('imap')),
-    IMAP_LAB_PORT: enteroEntre(1, 65535, 143),
-    // Contraseña de los tres buzones del laboratorio. Opcional aquí (la API arranca sin el
-    // laboratorio); con valor, de 16 a 128 caracteres. Nunca se imprime.
-    IMAP_LAB_PASSWORD: opcional(z.string().min(16).max(128)),
+    // --- M4: IMAP del laboratorio (Dovecot, D-043). ---
+    ...ImapLabEnv.shape,
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
@@ -140,9 +147,19 @@ const Env = z
   });
 
 export type Config = z.infer<typeof Env>;
+export type ImapLabConfig = z.infer<typeof ImapLabEnv>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = Env.safeParse(env);
+  return parseEnv(Env, env);
+}
+
+/** Solo las variables del IMAP del laboratorio (sin DATABASE_URL ni el resto de la API). */
+export function loadImapLabConfig(env: NodeJS.ProcessEnv = process.env): ImapLabConfig {
+  return parseEnv(ImapLabEnv, env);
+}
+
+function parseEnv<T extends z.ZodType>(schema: T, env: NodeJS.ProcessEnv): z.infer<T> {
+  const parsed = schema.safeParse(env);
   if (!parsed.success) {
     // Solo se nombran las variables, nunca sus valores (pueden ser secretos). Las reglas
     // propias (code "custom") agregan su explicación, que tampoco incluye valores.
