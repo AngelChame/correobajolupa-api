@@ -115,7 +115,8 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
       sendError(req, res, 404, 'not_found', 'El reporte no existe.');
       return;
     }
-    const hallazgos = await db.finding.findMany({ where: { reportId: id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    // Por regla (R1…R8, orden del enum) y luego por fecha e id: orden estable aunque se inserten juntos.
+    const hallazgos = await db.finding.findMany({ where: { reportId: id }, orderBy: [{ ruleId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] });
     res.json({ items: hallazgos.map(toFindingDto) });
   });
 

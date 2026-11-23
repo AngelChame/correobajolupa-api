@@ -26,10 +26,11 @@ export const REDACT_PATHS = [
   '*.originalname',
 ];
 
-export function createLogger(level: string, destination?: DestinationStream): Logger {
+/** `service` distingue los procesos en los registros: 'api' o 'worker'. */
+export function createLogger(level: string, destination?: DestinationStream, service = 'api'): Logger {
   const options = {
     level,
-    base: { service: 'api' },
+    base: { service },
     redact: { paths: REDACT_PATHS, censor: '[redactado]' },
   };
   return destination ? pino(options, destination) : pino(options);
