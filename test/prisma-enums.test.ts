@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScanStatus } from '../src/contract/schemas/attachments.js';
 import { AuditResult } from '../src/contract/schemas/audit.js';
+import { IncidentStatus } from '../src/contract/schemas/incidents.js';
 import { IndicatorStatus, IndicatorType } from '../src/contract/schemas/indicators.js';
 import { MailboxLabel, MessageLocation, SyncStatus } from '../src/contract/schemas/lab.js';
 import * as contrato from '../src/contract/schemas/reports.js';
@@ -21,6 +22,7 @@ const pares = [
   ['MessageLocation', prisma.MessageLocation, MessageLocation.options],
   ['IndicatorType', prisma.IndicatorType, IndicatorType.options],
   ['IndicatorStatus', prisma.IndicatorStatus, IndicatorStatus.options],
+  ['IncidentStatus', prisma.IncidentStatus, IncidentStatus.options],
 ] as const;
 
 describe('enums de Prisma = enums del contrato', () => {

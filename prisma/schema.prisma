@@ -1,5 +1,5 @@
 // Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes; M2:
-// adjuntos; M4: laboratorio IMAP; M5: indicadores y lista de exclusión).
+// adjuntos; M4: laboratorio IMAP; M5: indicadores y lista de exclusión; M6: incidentes).
 // Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
 // La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
 
@@ -110,6 +110,10 @@ model User {
   proposedIndicators Indicator[]  @relation("IndicatorProposedBy")
   decidedIndicators  Indicator[]  @relation("IndicatorDecidedBy")
   exclusions         Exclusion[]
+  createdIncidents   Incident[]
+  incidentReports    IncidentReport[]
+  incidentIndicators IncidentIndicator[]
+  incidentComments   IncidentComment[]
 
   @@map("users")
 }
@@ -202,6 +206,7 @@ model Report {
   links       ReportLink[]
   attachments Attachment[]
   indicators  Indicator[]
+  incidents   IncidentReport[]
 
   @@index([status, lockedUntil])
   @@index([userId, createdAt])
@@ -428,6 +433,8 @@ model Indicator {
   createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   decidedAt    DateTime?       @map("decided_at") @db.Timestamptz(3)
 
+  incidents IncidentIndicator[]
+
   @@index([proposedById, createdAt])
   @@index([status, createdAt])
   @@map("indicators")
@@ -446,4 +453,90 @@ model Exclusion {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("exclusions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// M6: incidentes y comentarios. Mismos valores que IncidentStatus en
+// src/contract/schemas/incidents.ts (test/prisma-enums.test.ts falla si se separan).
+
+enum IncidentStatus {
+  received
+  analyzing
+  contained
+  closed
+  false_positive
+
+  @@map("incident_status")
+}
+
+/// Incidente: agrupa reportes, indicadores y comentarios de una investigación. title y
+/// description son texto de usuario: se guardan tal cual, se escapan siempre al mostrarlos y
+/// nunca van a los registros ni a la auditoría (P-18). Las transiciones de estado viven en
+/// src/incidents/status.ts. updatedAt lo pone la ruta (un PATCH sin cambios no lo toca).
+model Incident {
+  id          String         @id @default(uuid()) @db.Uuid
+  title       String         @db.VarChar(120)
+  description String?        @db.VarChar(2000)
+  status      IncidentStatus @default(received)
+  /// Quien lo creó. Restrict: una cuenta con incidentes no se puede borrar (solo desactivar).
+  createdById String         @map("created_by_id") @db.Uuid
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime       @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  reports    IncidentReport[]
+  indicators IncidentIndicator[]
+  comments   IncidentComment[]
+
+  @@index([status, updatedAt])
+  @@index([updatedAt])
+  @@map("incidents")
+}
+
+/// Reporte asociado a un incidente. Al borrar el reporte (retención de 7 días, D-012) se borra
+/// la asociación y el incidente se queda; al borrar el incidente, también.
+model IncidentReport {
+  incidentId String   @map("incident_id") @db.Uuid
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  reportId   String   @map("report_id") @db.Uuid
+  report     Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  addedById  String   @map("added_by_id") @db.Uuid
+  addedBy    User     @relation(fields: [addedById], references: [id], onDelete: Restrict)
+  addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz(3)
+
+  // La llave primaria (incident_id, report_id) también sirve de índice por incident_id.
+  @@id([incidentId, reportId])
+  @@index([reportId])
+  @@map("incident_reports")
+}
+
+/// Indicador asociado a un incidente (cualquier estado: M7 decide cuáles usa).
+model IncidentIndicator {
+  incidentId  String    @map("incident_id") @db.Uuid
+  incident    Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  indicatorId String    @map("indicator_id") @db.Uuid
+  indicator   Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  addedById   String    @map("added_by_id") @db.Uuid
+  addedBy     User      @relation(fields: [addedById], references: [id], onDelete: Restrict)
+  addedAt     DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
+
+  @@id([incidentId, indicatorId])
+  @@index([indicatorId])
+  @@map("incident_indicators")
+}
+
+/// Comentario de un incidente. Solo inserción: un trigger de la migración rechaza los UPDATE y
+/// no hay rutas para editarlos ni borrarlos; se borran solo junto con su incidente. body es texto
+/// de usuario: se escapa siempre y nunca va a los registros ni a la auditoría (P-18).
+model IncidentComment {
+  id         String   @id @default(uuid()) @db.Uuid
+  incidentId String   @map("incident_id") @db.Uuid
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  authorId   String   @map("author_id") @db.Uuid
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body       String   @db.VarChar(2000)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_comments")
 }
