@@ -163,6 +163,8 @@ model AuditEvent {
 
   @@index([createdAt])
   @@index([actorId])
+  /// GET /audit filtra por acción y ordena por fecha (M7).
+  @@index([action, createdAt])
   @@map("audit_events")
 }
 

@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { csrfGuard } from './auth/csrf.js';
 import { createAuthLimiters } from './auth/rate-limit.js';
+import { createAuditLogRouter } from './audit-log/routes.js';
 import { createAuthRouter } from './auth/routes.js';
 import { loadSession } from './auth/session.js';
 import type { Config } from './config.js';
@@ -129,6 +130,8 @@ export function createApp({ logger, db, config, decoyHash, storage, openMailProv
   v1.use(createIncidentsRouter({ db }));
   // Cuarentena, acciones y restauración (M7): /incidents/{id}/quarantine, /incidents/{id}/actions y /actions/{id}/restore.
   v1.use(createQuarantineRouter({ db, config, openProvider }));
+  // Consulta de la auditoría (M7): /audit, solo lectura.
+  v1.use(createAuditLogRouter({ db }));
   app.use('/api/v1', v1);
 
   app.use((req, res) => {
