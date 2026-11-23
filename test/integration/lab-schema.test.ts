@@ -37,13 +37,18 @@ function mensaje(mailboxId: string, extra: Partial<{ uid: bigint; uidValidity: b
 }
 
 describe('migración del laboratorio', () => {
-  it('crea los 3 buzones con estado never', async () => {
+  it('crea los 3 buzones, con estado never por defecto', async () => {
+    // Solo etiqueta y dirección: otras pruebas (lab-sync) cambian el estado de sincronización.
     const filas = await db.mailbox.findMany({ orderBy: { address: 'asc' } });
-    expect(filas.map((f) => [f.label, f.address, f.lastSyncStatus, f.lastSyncAt, f.syncStartedAt])).toEqual([
-      ['staff', 'staff@lab.example', 'never', null, null],
-      ['student', 'student@lab.example', 'never', null, null],
-      ['teacher', 'teacher@lab.example', 'never', null, null],
+    expect(filas.map((f) => [f.label, f.address])).toEqual([
+      ['staff', 'staff@lab.example'],
+      ['student', 'student@lab.example'],
+      ['teacher', 'teacher@lab.example'],
     ]);
+    const [columna] = await db.$queryRaw<{ column_default: string }[]>`
+      SELECT column_default FROM information_schema.columns
+      WHERE table_name = 'mailboxes' AND column_name = 'last_sync_status'`;
+    expect(columna?.column_default).toBe("'never'::sync_status");
   });
 
   it('un mensaje nuevo trae listas vacías y acepta un UIDVALIDITY de 32 bits sin signo', async () => {
