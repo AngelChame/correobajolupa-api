@@ -259,18 +259,29 @@ describe('entrega simulada', () => {
     expect(noEml.status).toBe(400);
     expect(noEml.body).toMatchObject({ code: 'validation_error', details: [{ field: 'reportId' }] });
 
-    expect((await entregar(a, analista, staff.id, UUID_INEXISTENTE)).status).toBe(404);
-    expect((await entregar(a, analista, staff.id, 'no-es-uuid')).status).toBe(400);
-    expect((await entregar(a, analista, staff.id, undefined)).status).toBe(400);
+    expect(noEml.body).toMatchObject({ message: 'Solo se pueden entregar reportes subidos como .eml.', details: [{ message: 'El reporte se pegó como texto, no se subió como .eml.' }] });
+
+    const sinReporte = await entregar(a, analista, staff.id, UUID_INEXISTENTE);
+    expect(sinReporte.status).toBe(404);
+    expect(sinReporte.body).toMatchObject({ code: 'not_found', message: 'El reporte no existe.' });
+    for (const reportIdMalo of ['no-es-uuid', undefined]) {
+      const invalido = await entregar(a, analista, staff.id, reportIdMalo);
+      expect(invalido.status).toBe(400);
+      expect(invalido.body).toMatchObject({ code: 'validation_error', message: 'Revisa los datos enviados.', details: [{ field: 'reportId' }] });
+      expect(invalido.body.details).toHaveLength(1);
+    }
 
     const reportId = await subirEml(a, analista, rawOf('LD1-personal.eml'));
-    expect((await entregar(a, analista, UUID_INEXISTENTE, reportId)).status).toBe(404);
-    expect((await entregar(a, analista, 'no-es-uuid', reportId)).status).toBe(404);
+    for (const buzonMalo of [UUID_INEXISTENTE, 'no-es-uuid']) {
+      const sinBuzon = await entregar(a, analista, buzonMalo, reportId);
+      expect(sinBuzon.status).toBe(404);
+      expect(sinBuzon.body).toMatchObject({ code: 'not_found', message: 'El buzón no existe.' });
+    }
 
     await db.$executeRaw`UPDATE mailboxes SET sync_started_at = now() WHERE id = ${staff.id}::uuid`;
     const ocupado = await entregar(a, analista, staff.id, reportId);
     expect(ocupado.status).toBe(409);
-    expect(ocupado.body.code).toBe('conflict');
+    expect(ocupado.body).toMatchObject({ code: 'conflict', message: 'Ya hay una sincronización de ese buzón en curso. Intenta en un momento.' });
     await db.$executeRaw`UPDATE mailboxes SET sync_started_at = NULL WHERE id = ${staff.id}::uuid`;
 
     mapa.get('staff@lab.example')!.failAppend = true;
@@ -280,8 +291,27 @@ describe('entrega simulada', () => {
     expect(await db.indexedMessage.count({ where: { mailboxId: staff.id } })).toBe(0);
     // El arriendo siempre se suelta.
     expect((await db.mailbox.findUniqueOrThrow({ where: { id: staff.id } })).syncStartedAt).toBeNull();
-    const fallos = await db.auditEvent.findMany({ where: { action: 'mailbox.simulated_delivery', result: 'failure' } });
-    expect(fallos.map((e) => (e.metadata as { reason: string }).reason).sort()).toEqual(['in_progress', 'mail_unavailable']);
+
+    // Siempre auditada (D-006, P-16): también los rechazos antes de tocar el buzón, en orden.
+    const fallos = await db.auditEvent.findMany({ where: { action: 'mailbox.simulated_delivery' }, orderBy: { createdAt: 'asc' } });
+    expect(fallos.map((e) => [(e.metadata as { reason: string }).reason, e.targetId])).toEqual([
+      ['not_eml', staff.id],
+      ['report_not_found', staff.id],
+      ['invalid_body', staff.id],
+      ['invalid_body', staff.id],
+      ['mailbox_not_found', UUID_INEXISTENTE],
+      ['mailbox_not_found', null],
+      ['in_progress', staff.id],
+      ['mail_unavailable', staff.id],
+    ]);
+    for (const e of fallos) {
+      expect(e).toMatchObject({ result: 'failure', targetType: 'mailbox', actorId: analista.userId });
+      expect(e.requestId).toBeTruthy();
+      expect(Object.keys(e.metadata as object).every((k) => ['reportId', 'appended', 'reason'].includes(k))).toBe(true);
+      expect((e.metadata as { appended: number }).appended).toBe(0);
+      // Nada de lo que mandó el cliente queda guardado.
+      expect(JSON.stringify(e)).not.toContain('no-es-uuid');
+    }
   });
 });
 

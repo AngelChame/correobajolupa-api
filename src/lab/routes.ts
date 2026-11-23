@@ -9,7 +9,7 @@ import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import type { MailProvider } from '../mail/provider.js';
 import type { ReportStorage } from '../storage/storage.js';
-import { ReportFileMissingError, ReportNotEmlError, ReportNotFoundError, simulateDelivery } from './delivery.js';
+import { auditDeliveryRejection, ReportFileMissingError, ReportNotEmlError, ReportNotFoundError, simulateDelivery } from './delivery.js';
 import { MailboxNotFoundError, SyncInProgressError, SyncTimeoutError, syncMailbox } from './sync.js';
 import { MESSAGE_DETAIL_SELECT, MESSAGE_SUMMARY_SELECT, toMailboxDto, toMessageDetailDto, toMessageSummaryDto } from './dto.js';
 
@@ -22,11 +22,12 @@ export type LabDeps = {
 };
 
 const Uuid = z.uuid();
+const isUuid = (value: unknown): value is string => typeof value === 'string' && Uuid.safeParse(value).success;
 
 /** Parámetro de la ruta si es un UUID; si no, 404 (un ID mal formado no existe). */
 export function uuidParam(req: Request, res: Response, name: string, message: string): string | undefined {
   const id = req.params[name];
-  if (typeof id === 'string' && Uuid.safeParse(id).success) return id;
+  if (isUuid(id)) return id;
   sendError(req, res, 404, 'not_found', message);
   return undefined;
 }
@@ -86,12 +87,17 @@ export function createLabRouter({ db, config, storage, openProvider }: LabDeps) 
 
   // Entrega simulada (D-006): el .eml original del reporte entra a INBOX del buzón con APPEND.
   // Simulación local dentro del Dovecot del laboratorio: no envía correo a ningún sitio.
+  // Siempre auditada, también los rechazos de aquí (P-16). La auditoría se escribe antes de
+  // responder y nunca guarda lo que mandó el cliente: solo IDs ya validados como UUID.
   router.post('/mailboxes/:mailboxId/simulated-delivery', analista, async (req, res) => {
+    const actor = req.auth!.user;
+    const rejection = { actorId: actor.id, requestId: String(req.id) };
+    if (!isUuid(req.params.mailboxId)) await auditDeliveryRejection(db, req.log, { ...rejection, reason: 'mailbox_not_found' });
     const id = uuidParam(req, res, 'mailboxId', 'El buzón no existe.');
     if (!id) return;
+    if (!SimulatedDeliveryBody.safeParse(req.body).success) await auditDeliveryRejection(db, req.log, { ...rejection, mailboxId: id, reason: 'invalid_body' });
     const body = parseBody(SimulatedDeliveryBody, req, res);
     if (!body) return;
-    const actor = req.auth!.user;
     try {
       const r = await simulateDelivery(
         { db, storage, logger: req.log, institutionalDomains: config.INSTITUTIONAL_DOMAINS, openProvider },

@@ -57,25 +57,94 @@ export type DeliveryInput = {
   requestId?: string;
 };
 
+/** Motivos de una entrega simulada que no se completó (metadata.reason). */
+export type DeliveryFailureReason =
+  | 'mailbox_not_found'
+  | 'report_not_found'
+  | 'not_eml'
+  | 'invalid_body'
+  | 'in_progress'
+  | 'mail_unavailable'
+  | 'file_missing'
+  | 'unexpected';
+
+type DeliveryAuditEntry = {
+  /** Solo si es un UUID ya validado; nunca el texto que mandó el cliente. */
+  mailboxId?: string;
+  /** Solo si es un UUID ya validado. */
+  reportId?: string;
+  appended?: boolean;
+  /** null: la entrega se completó. */
+  reason: DeliveryFailureReason | null;
+  actorId: string;
+  requestId?: string;
+};
+
+/**
+ * Evento de auditoría de la entrega simulada (siempre auditada, D-006). Solo IDs, conteos y el
+ * motivo: nunca asunto, direcciones, Message-ID ni lo que mandó el cliente. Si la auditoría falla,
+ * se registra en pino y quien llama sigue igual.
+ */
+async function auditDelivery(db: Pick<Db, 'auditEvent'>, logger: Logger, entry: DeliveryAuditEntry): Promise<void> {
+  const metadata = {
+    ...(entry.reportId ? { reportId: entry.reportId } : {}),
+    appended: entry.appended ? 1 : 0,
+    ...(entry.reason ? { reason: entry.reason } : {}),
+  };
+  await recordAudit(db, {
+    action: AuditAction.mailboxSimulatedDelivery,
+    result: entry.reason ? 'failure' : 'success',
+    targetType: 'mailbox',
+    ...(entry.mailboxId ? { targetId: entry.mailboxId } : {}),
+    actorId: entry.actorId,
+    ...(entry.requestId ? { requestId: entry.requestId } : {}),
+    metadata,
+  }).catch(() => logger.error('no se pudo registrar la auditoría de la entrega simulada'));
+  if (entry.reason) logger.warn(metadata, 'falló la entrega simulada');
+  else logger.info(metadata, 'entrega simulada');
+}
+
+/** Audita una entrega simulada rechazada (result failure, appended 0). La usa también la ruta. */
+export async function auditDeliveryRejection(
+  db: Pick<Db, 'auditEvent'>,
+  logger: Logger,
+  rejection: { mailboxId?: string; reportId?: string; reason: DeliveryFailureReason; actorId: string; requestId?: string },
+): Promise<void> {
+  await auditDelivery(db, logger, { ...rejection, appended: false });
+}
+
+function failureReason(error: unknown): DeliveryFailureReason {
+  if (error instanceof MailboxNotFoundError) return 'mailbox_not_found';
+  if (error instanceof ReportNotFoundError) return 'report_not_found';
+  if (error instanceof ReportNotEmlError) return 'not_eml';
+  if (error instanceof SyncInProgressError) return 'in_progress';
+  if (error instanceof MailUnavailableError) return 'mail_unavailable';
+  if (error instanceof ReportFileMissingError) return 'file_missing';
+  return 'unexpected';
+}
+
 /** Devuelve el id del mensaje indexado y si hubo APPEND (false: ya estaba). */
 export async function simulateDelivery(deps: DeliveryDeps, input: DeliveryInput): Promise<{ messageId: string; appended: boolean }> {
   const { db } = deps;
   const log = deps.logger.child({ mailboxId: input.mailboxId, reportId: input.reportId });
 
-  const mailbox = await db.mailbox.findUnique({ where: { id: input.mailboxId }, select: { address: true } });
-  if (!mailbox) throw new MailboxNotFoundError();
-  const report = await db.report.findFirst({
-    where: { id: input.reportId, ...(input.ownerId ? { userId: input.ownerId } : {}) },
-    select: { source: true, storageKey: true },
-  });
-  if (!report) throw new ReportNotFoundError();
-  if (report.source !== 'eml') throw new ReportNotEmlError();
-
   let appended = false;
-  let reason: string | null = null;
+  let reason: DeliveryFailureReason | null = null;
   let messageId: string | undefined;
-  const token = await acquireMailboxLease(db, input.mailboxId);
+  let token: Date | null = null;
+  // Todo queda dentro del try: también el buzón o el reporte inexistentes y el reporte pegado se auditan.
   try {
+    const mailbox = await db.mailbox.findUnique({ where: { id: input.mailboxId }, select: { address: true } });
+    if (!mailbox) throw new MailboxNotFoundError();
+    const report = await db.report.findFirst({
+      where: { id: input.reportId, ...(input.ownerId ? { userId: input.ownerId } : {}) },
+      select: { source: true, storageKey: true },
+    });
+    if (!report) throw new ReportNotFoundError();
+    if (report.source !== 'eml') throw new ReportNotEmlError();
+
+    // El arriendo se toma después de las búsquedas: un rechazo no bloquea el buzón.
+    token = await acquireMailboxLease(db, input.mailboxId);
     if (!token) throw new SyncInProgressError();
 
     // El original se lee del almacenamiento (D-038), nunca se recibe del cliente.
@@ -109,29 +178,18 @@ export async function simulateDelivery(deps: DeliveryDeps, input: DeliveryInput)
     }
     return { messageId, appended };
   } catch (error) {
-    reason =
-      error instanceof SyncInProgressError
-        ? 'in_progress'
-        : error instanceof MailUnavailableError
-          ? 'mail_unavailable'
-          : error instanceof ReportFileMissingError
-            ? 'file_missing'
-            : 'unexpected';
+    reason = failureReason(error);
     throw error;
   } finally {
     if (token) await releaseMailboxLease(db, input.mailboxId, token).catch(() => log.error('no se pudo soltar el arriendo del buzón'));
-    // Siempre auditada. Solo IDs y conteos: nunca asunto, direcciones ni Message-ID.
-    const metadata = { reportId: input.reportId, appended: appended ? 1 : 0, ...(reason ? { reason } : {}) };
-    await recordAudit(db, {
-      action: AuditAction.mailboxSimulatedDelivery,
-      result: reason ? 'failure' : 'success',
-      targetType: 'mailbox',
-      targetId: input.mailboxId,
+    // Siempre auditada (D-006), también los rechazos.
+    await auditDelivery(db, log, {
+      mailboxId: input.mailboxId,
+      reportId: input.reportId,
+      appended,
+      reason,
       actorId: input.actorId,
       ...(input.requestId ? { requestId: input.requestId } : {}),
-      metadata,
-    }).catch(() => log.error('no se pudo registrar la auditoría de la entrega simulada'));
-    if (reason) log.warn(metadata, 'falló la entrega simulada');
-    else log.info(metadata, 'entrega simulada');
+    });
   }
 }
