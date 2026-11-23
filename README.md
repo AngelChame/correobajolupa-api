@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) y M3 (informe con guía de mitigación) y M4 (laboratorio IMAP: Dovecot, 21 mensajes sintéticos, sincronización y entrega simulada) hechos. Contrato OpenAPI 0.3.0 (declara también M5 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) M3 (informe con guía de mitigación), M4 (laboratorio IMAP: Dovecot, 21 mensajes sintéticos, sincronización y entrega simulada), M5 (indicadores y candidatos), M6 (incidentes) y M7 (cuarentena, restauración y consulta de la auditoría) hechos. Contrato OpenAPI 0.3.0. Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -241,10 +241,53 @@ Un **incidente** agrupa el trabajo de una investigación: reportes, indicadores 
 - **Sin cambio real, 200.** Un `PATCH` con los mismos valores (o el mismo estado) responde 200 sin tocar `updatedAt`. Cualquier cambio real, asociación o comentario sí sube `updatedAt`.
 - **Concurrencia.** El cambio de estado es condicional al estado leído: de dos `PATCH` simultáneos, uno gana y el otro recibe 409.
 - **Borrar un reporte** (a mano o por la retención de 7 días, D-012) lo quita de los incidentes; el incidente se queda y su conteo baja.
-- **Qué no hace.** Cambiar de estado no mueve ni restaura mensajes del laboratorio ni deshace nada: la cuarentena y la restauración son de M7 (`/incidents/{id}/quarantine` y `/actions`, todavía sin implementar).
+- **Qué no hace.** Cambiar de estado no mueve ni restaura mensajes del laboratorio ni deshace nada: la cuarentena y la restauración son acciones aparte de M7 (ver abajo).
 - **Cuentas.** Una cuenta que creó un incidente, asoció algo o comentó no se puede borrar (llave `RESTRICT`); solo se desactiva.
 
 **Auditoría.** `incident.create`, `incident.update` (nombres de los campos cambiados y, si cambió, el estado anterior y el nuevo), `incident.report_add`, `incident.report_remove`, `incident.indicator_add`, `incident.indicator_remove` e `incident.comment` (ID y longitud del comentario). También los rechazos 400, 404 y 409 con `metadata.reason`. Nunca el título, la descripción ni el texto de un comentario (P-18), ni un ID mal formado de la URL.
+
+## Cuarentena, restauración y auditoría (M7)
+
+**Es una simulación local dentro del laboratorio:** solo mueve mensajes entre `INBOX` y `Cuarentena` de los tres buzones sintéticos del Dovecot del Compose (D-008, D-013). No toca el correo de nadie, no borra mensajes y nada se mueve en segundo plano: cada acción la pide una persona con rol de analista o administrador y `confirm: true`.
+
+| Ruta | Qué hace |
+| --- | --- |
+| `POST /incidents/{id}/quarantine` | Pone en cuarentena los mensajes aprobados uno por uno (`messageIds`, de 1 a 50, sin repetir, y `confirm: true`). Solo con el incidente en `analyzing` o `contained` (si no, 409, también en los estados finales). Responde un resultado por mensaje, en el orden recibido |
+| `GET /incidents/{id}/actions` | Acciones de cuarentena y de restauración del incidente, de la más reciente a la más vieja, con la ubicación original y la nueva (`folder` es la carpeta neutral `inbox` o `quarantine`, más UID y UIDVALIDITY) |
+| `POST /actions/{id}/restore` | Devuelve a INBOX un mensaje puesto en cuarentena (`confirm: true`). Solo sobre una acción `quarantine` hecha (si no, 404). Se permite en cualquier estado del incidente |
+| `GET /audit` | Eventos de auditoría, por fecha descendente; filtros `action` (igualdad exacta), `actorId`, `from` y `to` (ISO 8601, inclusive; `from > to` da 400); paginado como las demás listas |
+
+Las cuatro son solo para analista y administrador (el reportante recibe 403 y queda en la auditoría como `authz.denied`).
+
+**Qué pasa con cada mensaje, en orden (nunca se salta una comprobación):**
+
+1. Si no está en el índice → `not_found`.
+2. Si el índice dice que ya está en Cuarentena → `already_quarantined`, sin tocar el IMAP (`actionId` es el de la acción hecha en este incidente, o `null`).
+3. **Reverificación antes de mover (D-008):** el UIDVALIDITY actual de INBOX debe ser el guardado (si no → `uidvalidity_mismatch`: no se actúa y el buzón queda con `lastSyncStatus = error` para resincronizar) y el UID debe seguir siendo el mismo mensaje: mismo `Message-ID` o, si el mensaje no trae, mismo SHA-256 del crudo (si no → `not_found`).
+4. `UID MOVE` a Cuarentena. **El UID nuevo y el UIDVALIDITY salen de la respuesta del servidor** (COPYUID de UIDPLUS); sin esa evidencia el resultado es `error` ("No se pudo confirmar el movimiento") y nunca se inventa un UID.
+5. En **una transacción**: índice actualizado, acción `done` con su ubicación original y nueva, y auditoría. Si el servidor movió pero la base falló → `error` "Movido; resincroniza el buzón", el buzón queda para resincronizar y el hecho se registra.
+
+La restauración hace lo mismo al revés: reverifica en Cuarentena el UIDVALIDITY y el UID guardados en la acción, mueve a INBOX con evidencia y registra una acción `restore` (`originalLocation` = dónde estaba en Cuarentena, `newLocation` = dónde quedó). Resultados: `restored`, `already_restored`, `uidvalidity_mismatch`, `not_found` o `error`.
+
+**Idempotencia (P-13).** Hay una sola acción por (incidente, mensaje, tipo). Repetir una cuarentena o una restauración hecha no mueve nada. Un intento fallido (`failed`, con un código corto) se reintenta en la **misma fila** (sube `attempts`).
+
+**Límites aceptados.**
+
+- Un mensaje que ya se restauró en un incidente **no** se vuelve a poner en cuarentena en ese mismo incidente (`error` con un mensaje fijo); se puede desde otro incidente.
+- Un buzón a la vez: la cuarentena usa el mismo arriendo que la sincronización y la entrega simulada. Si el buzón está ocupado, sus mensajes salen `error` "Buzón ocupado".
+- Una conexión por buzón y por petición, y el presupuesto de la sincronización (`SYNC_BUDGET_MS`, 45 s) para toda la petición: lo que no alcance sale `error` "Tiempo agotado; no se movió". Si la conexión se corta a medio lote (P-14), los mensajes que faltan de ese buzón salen `error` y los demás buzones siguen.
+- 503 solo si el IMAP no está configurado o ningún buzón involucrado respondió y no se intentó nada. Si se intentó algo, la respuesta es 200 con un resultado por mensaje.
+- La acción guarda el mensaje, el buzón y la clave de deduplicación como datos propios (**sin** clave foránea al índice), así la sincronización puede seguir borrando filas cuando cambia el UIDVALIDITY. Si la sincronización reindexa un mensaje con otro id, la acción vieja se conserva con el id anterior.
+
+**Detalles fijos.** El campo `detail` de cada resultado es un texto fijo en español: nunca lleva nada del servidor IMAP, direcciones, contraseñas ni contenido del correo.
+
+**Auditoría (P-18).** `quarantine.execute` y `quarantine.restore` por mensaje (`targetType: message`, `targetId` = id del mensaje, `success` o `failure`) con `metadata` solo `incidentId`, `actionId`, `outcome` y `mailboxId`. Los rechazos (400, 404, 409 y 503) también quedan, con `targetType` `incident` o `action` y `metadata.reason`, sin texto del cliente. Nunca asunto, remitente, direcciones, `Message-ID`, UID ni cuerpos; los registros de pino tampoco. `GET /audit` devuelve `metadata` solo si es un objeto de JSON (si no, `{}`) y `actor` es `null` en los eventos del sistema (`system.*`). Se revisaron los eventos de M0 a M6: ninguno guarda correos, contraseñas, tokens ni textos de usuario en `metadata`.
+
+**Retención (P-21).** La limpieza de 7 días no cambia: un reporte vencido que está en un incidente se borra, el incidente se queda sin él y la vuelta queda auditada como `system.cleanup` solo con conteos. No hay retención nueva para los mensajes indexados ni para la auditoría.
+
+**Restricción de la carpeta Cuarentena (decisión nº 2).** Dovecot tiene el plugin `acl` con un archivo global de solo lectura (`docker/imap/dovecot-acl`): el **dueño** del buzón no ve, no lee, no inserta ni saca mensajes de `Cuarentena` (INBOX le queda igual), y solo el **usuario de servicio** de la API puede. La API, la siembra y las pruebas entran como `buzón*cbl-servicio` (usuario maestro de Dovecot) con la **misma** `IMAP_LAB_PASSWORD`: no hay contraseñas ni secretos nuevos. Límite: como la contraseña del laboratorio es una sola, quien la conoce también puede entrar como servicio; la restricción separa al dueño de la API dentro del laboratorio y no sustituye a credenciales distintas. Detalle y prueba: [`docker/imap/README.md`](docker/imap/README.md).
+
+Variables: las de M4 (`IMAP_LAB_PASSWORD`, `SYNC_BUDGET_MS`) y `MAX_EML_BYTES` (tope para bajar el crudo cuando hay que comparar el SHA-256). M7 no agrega variables.
 
 ## Pila completa con el front
 

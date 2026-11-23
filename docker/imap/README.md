@@ -9,16 +9,17 @@ Servidor IMAP de laboratorio de CorreoBajoLupa (D-043): **Dovecot** en su propio
 | Imagen base | `ubuntu:22.04` fijada por digest (`sha256:f64b2ffc…21c0e6`, publicada el 17 nov 2026) |
 | Dovecot | `dovecot-core` y `dovecot-imapd` **`1:2.3.16+dfsg1-3ubuntu2.9`** (`dovecot --version`: `2.3.16 (7e2e900c1a)`), la misma versión de la prueba del 13 nov. No se fijan en apt: Ubuntu retira las versiones viejas al publicar parches y la construcción se rompería. Al reconstruir, revisa `dpkg-query -W dovecot-core dovecot-imapd` y actualiza esta línea |
 | Usuarios | `student@lab.example`, `teacher@lab.example` y `staff@lab.example` (dominio reservado `.example`, distinto de `INSTITUTIONAL_DOMAINS`) |
-| Carpetas | `INBOX` y `Cuarentena`, creadas y suscritas solas para cada usuario |
+| Carpetas | `INBOX` y `Cuarentena`, creadas y suscritas solas para cada usuario. `Cuarentena` está restringida por ACL (ver abajo) |
+| Usuario de servicio | `cbl-servicio`, usuario maestro de Dovecot: la API entra como `buzón*cbl-servicio` con la misma contraseña |
 | Buzones | Maildir en el volumen `imap-data` (`/var/vmail/lab.example/<usuario>/Maildir`): mensajes y UIDVALIDITY sobreviven a un reinicio |
 | Red | `imap-net`, interna (sin salida a internet). Solo la API, el worker y el servicio de prueba `test-imap` están en ella |
 | Puertos | 143 dentro de `imap-net`. **Ningún puerto se publica al host** |
 
-Archivos: `Dockerfile`, `dovecot.conf` (configuración completa, sin `conf.d`), `arranque.sh` (arma los usuarios y arranca Dovecot) y `salud.sh` (healthcheck).
+Archivos: `Dockerfile`, `dovecot.conf` (configuración completa, sin `conf.d`), `dovecot-acl` (ACL global), `arranque.sh` (arma los usuarios y arranca Dovecot) y `salud.sh` (healthcheck).
 
 ## Contraseña
 
-Una sola para los tres buzones: `IMAP_LAB_PASSWORD` del `.env`, de **16 caracteres o más**. Sin ella, o si es más corta, el contenedor `imap` sale con error y no arranca; el resto de la pila sigue funcionando. Al arrancar, `arranque.sh` la convierte en hash con `doveadm pw -s SHA512-CRYPT` (sal aleatoria), escribe el archivo de usuarios en memoria (`/run/dovecot-lab/users`, permisos 600, nunca en el volumen ni en el repo) y la borra de su entorno antes de ceder el proceso a Dovecot. Nunca se imprime: ni el script ni Dovecot la registran (`auth_debug_passwords = no`).
+Una sola para los tres buzones: `IMAP_LAB_PASSWORD` del `.env`, de **16 caracteres o más**. Sin ella, o si es más corta, el contenedor `imap` sale con error y no arranca; el resto de la pila sigue funcionando. Al arrancar, `arranque.sh` la convierte en hash con `doveadm pw -s SHA512-CRYPT` (sal aleatoria), escribe el archivo de usuarios y el del usuario de servicio en memoria (`/run/dovecot-lab/users` y `/run/dovecot-lab/masters`, permisos 600, con el **mismo** hash; nunca en el volumen ni en el repo) y la borra de su entorno antes de ceder el proceso a Dovecot. Nunca se imprime: ni el script ni Dovecot la registran (`auth_debug_passwords = no`).
 
 Límite conocido: como todos los secretos del Compose, la variable queda en la configuración del contenedor (`docker inspect`). Quien puede usar Docker en la máquina ya puede leerla; es lo mismo que pasa con `POSTGRES_PASSWORD`.
 
@@ -68,9 +69,11 @@ Para empezar de cero: `docker compose down` y borrar el volumen `imap-data` (`do
 
 `test/lab-seed-smoke.test.ts` siembra dos veces: cada mensaje queda una sola vez (7 por buzón) y la segunda corrida inserta 0. Deja los buzones sembrados.
 
-`test/mail-imap-smoke.test.ts` prueba el proveedor de correo (`src/mail/imap.ts`): lista `INBOX` de un buzón sembrado con UIDVALIDITY estable, baja un mensaje igual byte a byte al `.eml`, devuelve `null` si pasa del tope y hace `append` con UID y UIDVALIDITY coherentes (con un `Message-ID` único que borra al terminar).
+`test/mail-imap-smoke.test.ts` prueba el proveedor de correo (`src/mail/imap.ts`): lista `INBOX` de un buzón sembrado con UIDVALIDITY estable, baja un mensaje igual byte a byte al `.eml`, devuelve `null` si pasa del tope, hace `append` con UID y UIDVALIDITY coherentes y, desde M7, `inspect` y `move` de INBOX a Cuarentena y de vuelta, con el UID nuevo tomado del COPYUID del servidor, el contenido igual byte a byte y `MoveUnconfirmedError` si el UID ya no existe (siempre con un `Message-ID` único que borra al terminar).
 
-Como el 143 no se publica, las tres se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
+`test/imap-acl-smoke.test.ts` prueba la ACL de `Cuarentena` (ver abajo).
+
+Como el 143 no se publica, las cuatro se corren **dentro de `imap-net`** con el servicio `test-imap` (perfil `test`), un archivo a la vez:
 
 ```bash
 npm run test:imap:docker
@@ -127,6 +130,26 @@ Sin `IMAP_LAB_SMOKE=1` (por ejemplo en `npm test` y en el CI) se saltan.
 - `docker compose port imap 143`: no hay puerto en el host (`:0`).
 - Memoria en reposo: unos 4 MiB (`docker stats --no-stream`). Imagen: unos 192 MB.
 
-## Pendiente
+## ACL de `Cuarentena` (M7, decisión nº 2)
 
-- **ACL de `Cuarentena` (decisión abierta nº 2):** en este paso la carpeta es una carpeta normal del usuario. La restricción para que el dueño del buzón no pueda sacar mensajes de ella llega en **M7**.
+Objetivo: que el **dueño** del buzón no pueda leer ni sacar los mensajes de `Cuarentena`, y que solo el servicio (la API) lo haga. Verificado contra la documentación oficial de Dovecot 2.3 (plugin `acl` y usuarios maestros) y probado con este Dovecot (2.3.16).
+
+**Cómo quedó:**
+
+- `dovecot.conf` carga el plugin `acl` (`mail_plugins = $mail_plugins acl`) con un archivo global: `plugin { acl = vfile:/etc/dovecot/dovecot-acl }`. **No** se carga `imap_acl`: las ACL no se pueden ver ni cambiar por IMAP (`GETACL`/`SETACL`).
+- `dovecot-acl` (dentro de la imagen, solo lectura, permisos 444):
+
+  ```
+  * user=cbl-servicio lrwstipekxa
+  Cuarentena -owner lrwstipekxa
+  ```
+
+  La primera línea da todos los derechos al usuario de servicio en todas las carpetas. La segunda **quita** al dueño todos los derechos sobre `Cuarentena` (derechos negativos): no la lista, no la abre, no inserta, no marca ni borra. INBOX sigue con los derechos por defecto del dueño.
+- Usuario de servicio: un `passdb` maestro (`master = yes`, `result_success = continue` para que Dovecot compruebe que el buzón exista, separador `auth_master_user_separator = *`). Según la documentación, el usuario maestro está sujeto a las ACL con **su propia** identidad y no es el dueño del buzón: por eso la ACL global le da los derechos. No entra solo (`cbl-servicio` sin buzón no inicia sesión) y usa el mismo hash de `IMAP_LAB_PASSWORD`.
+- La API (`labProviderFactory`), la siembra (`npm run lab:seed`) y las pruebas de humo entran como `buzón*cbl-servicio` (`labImapUser` en `src/mail/imap.ts`). Mismo puerto, misma red, nada publicado al host.
+
+**Prueba que lo demuestra:** `test/imap-acl-smoke.test.ts` (dentro de `npm run test:imap:docker`): el dueño no puede abrir `Cuarentena` (ni en solo lectura), ni pedir su `STATUS`, ni hacer `APPEND` en ella; el servicio mete un mensaje en `Cuarentena`, el dueño no lo encuentra en su INBOX ni puede abrir Cuarentena, y el servicio lo devuelve a INBOX; el servicio no entra solo ni con otra contraseña. `test/imap-smoke.test.ts` comprueba además que al dueño ya no se le lista `Cuarentena` y al servicio sí.
+
+**Límite honesto:** la contraseña del laboratorio es una sola (regla del proyecto: sin secretos nuevos), así que quien la conoce también puede entrar como servicio. La ACL separa al dueño de la API dentro del laboratorio y demuestra el control; en un despliegue real el servicio tendría su propia credencial.
+
+**Pruebas de humo y fallos de contraseña:** al correr las cuatro pruebas seguidas, la siembra de prueba se pasó una vez de los 5 s (sola tarda medio segundo). La sospecha, sin confirmar en la documentación, es la demora que Dovecot aplica tras los intentos con contraseña incorrecta de otras pruebas; por eso la siembra de prueba y la de la ACL tienen un tope de 30 s.
