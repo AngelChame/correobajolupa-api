@@ -1,4 +1,5 @@
-// Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes).
+// Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes; M2:
+// adjuntos; M4: laboratorio IMAP).
 // Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
 // La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
 
@@ -268,4 +269,119 @@ model Attachment {
 
   @@unique([reportId, position])
   @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------------------------
+// M4: laboratorio IMAP (D-015, D-007, D-008). Mismos valores que src/contract/schemas/lab.ts
+// (test/prisma-enums.test.ts falla si se separan).
+
+enum MailboxLabel {
+  student
+  teacher
+  staff
+
+  @@map("mailbox_label")
+}
+
+enum SyncStatus {
+  ok
+  error
+  never
+
+  @@map("sync_status")
+}
+
+enum MessageLocation {
+  inbox
+  quarantine
+
+  @@map("message_location")
+}
+
+/// Buzón del laboratorio. Las 3 filas las inserta la migración (no hay arranque que las cree).
+model Mailbox {
+  id             String       @id @default(uuid()) @db.Uuid
+  label          MailboxLabel @unique
+  address        String       @unique @db.VarChar(254)
+  lastSyncAt     DateTime?    @map("last_sync_at") @db.Timestamptz(3)
+  lastSyncStatus SyncStatus   @default(never) @map("last_sync_status")
+  /// Arriendo de la sincronización (como la cola, D-054): mientras sea reciente, nadie más sincroniza este buzón.
+  syncStartedAt  DateTime?    @map("sync_started_at") @db.Timestamptz(3)
+
+  messages IndexedMessage[]
+
+  @@map("mailboxes")
+}
+
+/// Copia indexada de un mensaje de un buzón del laboratorio (no es un reporte). Sin bytes del
+/// correo: solo lo que el analizador extrajo. subject, fromAddress y replyTo son texto del correo:
+/// se escapan siempre y nunca van a los registros.
+model IndexedMessage {
+  id             String          @id @default(uuid()) @db.Uuid
+  mailboxId      String          @map("mailbox_id") @db.Uuid
+  mailbox        Mailbox         @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  /// RF-07: Message-ID normalizado o "sha256:" + SHA-256 del crudo. Mover el mensaje no lo cambia.
+  dedupeKey      String          @map("dedupe_key")
+  location       MessageLocation
+  /// UID y UIDVALIDITY son enteros de 32 bits sin signo: BIGINT en la base.
+  uid            BigInt
+  uidValidity    BigInt          @map("uid_validity")
+  subject        String?
+  fromAddress    String?         @map("from_address")
+  replyTo        String[]        @default([]) @map("reply_to")
+  /// Fecha del encabezado Date.
+  date           DateTime?       @db.Timestamptz(3)
+  hasAttachments Boolean         @map("has_attachments")
+  linksCount     Int             @map("links_count")
+  authentication Json?
+  rulesVersion   String          @map("rules_version") @db.VarChar(32)
+  priority       Priority
+  /// Reglas que disparó el analizador (sin evidencia: esa vive en los reportes).
+  ruleIds        RuleId[]        @default([]) @map("rule_ids")
+  indexedAt      DateTime        @default(now()) @map("indexed_at") @db.Timestamptz(3)
+
+  links       IndexedMessageLink[]
+  attachments IndexedMessageAttachment[]
+
+  @@unique([mailboxId, dedupeKey])
+  @@unique([mailboxId, location, uidValidity, uid])
+  @@map("indexed_messages")
+}
+
+/// Enlace de un mensaje indexado (como report_links). Nunca se visita (D-017).
+model IndexedMessageLink {
+  id            String         @id @default(uuid()) @db.Uuid
+  messageId     String         @map("message_id") @db.Uuid
+  message       IndexedMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  position      Int
+  displayText   String?        @map("display_text")
+  normalizedUrl String         @map("normalized_url")
+  defangedUrl   String         @map("defanged_url")
+  domain        String?        @db.VarChar(253)
+
+  @@unique([messageId, position])
+  @@index([domain])
+  @@index([normalizedUrl])
+  @@map("indexed_message_links")
+}
+
+/// Adjunto de un mensaje indexado (como attachments): solo metadatos, nunca los bytes (D-056.1).
+/// Al sincronizar no se escanea: scanStatus = unsupported, nunca "limpio" (D-018).
+model IndexedMessageAttachment {
+  id           String         @id @default(uuid()) @db.Uuid
+  messageId    String         @map("message_id") @db.Uuid
+  message      IndexedMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  position     Int
+  fileName     String?        @map("file_name") @db.VarChar(255)
+  declaredType String?        @map("declared_type") @db.VarChar(255)
+  detectedType String?        @map("detected_type") @db.VarChar(64)
+  sizeBytes    Int            @map("size_bytes")
+  sha256       String         @db.Char(64)
+  scanStatus   ScanStatus     @map("scan_status")
+  scanDetail   String?        @map("scan_detail") @db.VarChar(200)
+  scannedAt    DateTime?      @map("scanned_at") @db.Timestamptz(3)
+
+  @@unique([messageId, position])
+  @@index([sha256])
+  @@map("indexed_message_attachments")
 }

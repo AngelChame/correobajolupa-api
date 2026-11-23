@@ -38,7 +38,20 @@ describe('migración inicial', () => {
 
     const tablas = await db.$queryRaw<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
-    expect(tablas.map((t) => t.table_name)).toEqual(['_prisma_migrations', 'attachments', 'audit_events', 'findings', 'report_links', 'reports', 'sessions', 'users']);
+    expect(tablas.map((t) => t.table_name)).toEqual([
+      '_prisma_migrations',
+      'attachments',
+      'audit_events',
+      'findings',
+      'indexed_message_attachments',
+      'indexed_message_links',
+      'indexed_messages',
+      'mailboxes',
+      'report_links',
+      'reports',
+      'sessions',
+      'users',
+    ]);
   });
 
   it('crea un usuario con los valores por defecto', async () => {

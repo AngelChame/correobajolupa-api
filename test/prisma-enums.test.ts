@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScanStatus } from '../src/contract/schemas/attachments.js';
 import { AuditResult } from '../src/contract/schemas/audit.js';
+import { MailboxLabel, MessageLocation, SyncStatus } from '../src/contract/schemas/lab.js';
 import * as contrato from '../src/contract/schemas/reports.js';
 import * as prisma from '../src/generated/prisma/enums.js';
 
@@ -14,6 +15,9 @@ const pares = [
   ['RuleId', prisma.RuleId, contrato.RuleId.options],
   ['AuditResult', prisma.AuditResult, AuditResult.options],
   ['ScanStatus', prisma.ScanStatus, ScanStatus.options],
+  ['MailboxLabel', prisma.MailboxLabel, MailboxLabel.options],
+  ['SyncStatus', prisma.SyncStatus, SyncStatus.options],
+  ['MessageLocation', prisma.MessageLocation, MessageLocation.options],
 ] as const;
 
 describe('enums de Prisma = enums del contrato', () => {
