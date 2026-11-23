@@ -1,5 +1,5 @@
 // Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes; M2:
-// adjuntos; M4: laboratorio IMAP).
+// adjuntos; M4: laboratorio IMAP; M5: indicadores y lista de exclusión).
 // Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
 // La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
 
@@ -104,9 +104,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sessions    Session[]
-  auditEvents AuditEvent[]
-  reports     Report[]
+  sessions           Session[]
+  auditEvents        AuditEvent[]
+  reports            Report[]
+  proposedIndicators Indicator[]  @relation("IndicatorProposedBy")
+  decidedIndicators  Indicator[]  @relation("IndicatorDecidedBy")
+  exclusions         Exclusion[]
 
   @@map("users")
 }
@@ -198,6 +201,7 @@ model Report {
   findings    Finding[]
   links       ReportLink[]
   attachments Attachment[]
+  indicators  Indicator[]
 
   @@index([status, lockedUntil])
   @@index([userId, createdAt])
@@ -384,4 +388,62 @@ model IndexedMessageAttachment {
   @@unique([messageId, position])
   @@index([sha256])
   @@map("indexed_message_attachments")
+}
+
+enum IndicatorType {
+  domain
+  url
+  sha256
+  sender
+
+  @@map("indicator_type")
+}
+
+enum IndicatorStatus {
+  proposed
+  confirmed
+  dismissed
+
+  @@map("indicator_status")
+}
+
+/// Indicador (M5, D-019): dominio, URL, SHA-256 o remitente que sirve para buscar candidatos.
+/// value se guarda ya normalizado; la API solo lo devuelve desactivado (D-017) y nunca va a los
+/// registros ni a la auditoría. Único por (type, value) solo entre los no descartados: índice
+/// parcial en la migración (Prisma no lo expresa sin una función en vista previa).
+model Indicator {
+  id           String          @id @default(uuid()) @db.Uuid
+  type         IndicatorType
+  value        String          @db.VarChar(2048)
+  status       IndicatorStatus @default(proposed)
+  /// Reporte desde el que se propuso. Si el reporte se borra (7 días), el indicador se conserva.
+  reportId     String?         @map("report_id") @db.Uuid
+  report       Report?         @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  proposedById String          @map("proposed_by_id") @db.Uuid
+  proposedBy   User            @relation("IndicatorProposedBy", fields: [proposedById], references: [id], onDelete: Restrict)
+  decidedById  String?         @map("decided_by_id") @db.Uuid
+  decidedBy    User?           @relation("IndicatorDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  /// Nota de quien propone (texto libre: se escapa siempre y no va a los registros).
+  note         String?         @db.VarChar(500)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt    DateTime?       @map("decided_at") @db.Timestamptz(3)
+
+  @@index([proposedById, createdAt])
+  @@index([status, createdAt])
+  @@map("indicators")
+}
+
+/// Dominio de la lista de exclusión (P-11): no se puede proponer ni confirmar un indicador que
+/// caiga en él ni en sus subdominios. Los dominios institucionales de la configuración también
+/// excluyen, pero no viven aquí (se muestran como solo lectura).
+model Exclusion {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Normalizado (minúsculas, punycode, sin punto final).
+  domain      String   @unique @db.VarChar(253)
+  reason      String?  @db.VarChar(500)
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("exclusions")
 }

@@ -22,7 +22,7 @@ export type LabDeps = {
 };
 
 const Uuid = z.uuid();
-const isUuid = (value: unknown): value is string => typeof value === 'string' && Uuid.safeParse(value).success;
+export const isUuid = (value: unknown): value is string => typeof value === 'string' && Uuid.safeParse(value).success;
 
 /** Parámetro de la ruta si es un UUID; si no, 404 (un ID mal formado no existe). */
 export function uuidParam(req: Request, res: Response, name: string, message: string): string | undefined {
