@@ -65,7 +65,9 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
   });
 
   // Texto pegado: se guarda como bytes UTF-8, igual que un .eml (el worker lo leerá igual).
-  router.post('/paste', conSesion, async (req, res) => {
+  // Su parser JSON (hasta MAX_PASTE_BYTES) va aquí, después de la sesión y del CSRF globales y de
+  // conSesion: sin sesión o sin token no se lee el cuerpo. El exceso da 413 en el manejador de app.ts.
+  router.post('/paste', conSesion, express.json({ limit: config.MAX_PASTE_BYTES }), async (req, res) => {
     const body = parseBody(PasteBody, req, res);
     if (!body) return;
     await crear(req, res, 'paste', Buffer.from(body.text, 'utf8'));

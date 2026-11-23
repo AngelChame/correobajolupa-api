@@ -21,6 +21,12 @@ const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 /** Ruta sin query string: los parámetros nunca van a los registros (D-036). */
 const sinQuery = (url: string) => url.split('?')[0] ?? url;
 
+/**
+ * POST /reports/paste lee su cuerpo en la propia ruta. Express enruta sin distinguir mayúsculas
+ * ni la barra final, así que se compara igual (si no, /Reports/Paste/ pasaría por el parser global).
+ */
+const esRutaDePegado = (path: string) => path.toLowerCase().replace(/\/+$/, '') === '/api/v1/reports/paste';
+
 /** Ruta del healthcheck; no se registra en cada petición (ver autoLogging). */
 const HEALTH_PATH = '/api/v1/health';
 
@@ -78,13 +84,18 @@ export function createApp({ logger, db, config, decoyHash, storage }: AppDeps) {
   // Límite global por IP en /api/v1 (salvo /health), antes de leer el cuerpo.
   app.use('/api/v1', globalRateLimit(config));
 
-  // POST /reports/paste admite textos de hasta MAX_PASTE_BYTES (el contrato permite 200 000
-  // caracteres, que en UTF-8 pueden pasar de 100 kb). Va ANTES del parser global: body-parser
-  // no vuelve a leer un cuerpo ya leído, así que el global ya no aplica a esta ruta. El exceso
-  // da 413 payload_too_large en el manejador de errores de abajo.
-  app.use('/api/v1/reports/paste', express.json({ limit: config.MAX_PASTE_BYTES }));
-  // Resto de la API; los .eml van por multipart (multer, con su propio límite).
-  app.use(express.json({ limit: '100kb' }));
+  // Parser JSON global de 100 kb, salvo POST /reports/paste: esa ruta admite hasta
+  // MAX_PASTE_BYTES y monta su propio parser DESPUÉS de la sesión y del CSRF (src/reports/routes.ts),
+  // así una petición sin sesión o sin token se rechaza sin leer hasta 1 MiB. Los .eml van por
+  // multipart (multer, también después de la sesión).
+  const jsonGlobal = express.json({ limit: '100kb' });
+  app.use((req, res, next) => {
+    if (esRutaDePegado(req.path)) {
+      next();
+      return;
+    }
+    jsonGlobal(req, res, next);
+  });
 
   // Sesión de la cookie cbl_session (D-034): si es válida queda en req.auth.
   app.use(loadSession(db, config.COOKIE_SECURE));
