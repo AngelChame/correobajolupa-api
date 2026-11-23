@@ -1,5 +1,6 @@
 // Modelo de datos de CorreoBajoLupa (M0: cuentas, sesiones y auditoría; M1: reportes; M2:
-// adjuntos; M4: laboratorio IMAP; M5: indicadores y lista de exclusión; M6: incidentes).
+// adjuntos; M4: laboratorio IMAP; M5: indicadores y lista de exclusión; M6: incidentes; M7:
+// acciones de cuarentena y restauración).
 // Nombres en inglés en el código (D-044); tablas y columnas en snake_case en la base.
 // La URL de conexión no va aquí: la lee prisma.config.ts (CLI) y src/db/client.ts (app).
 
@@ -107,13 +108,14 @@ model User {
   sessions           Session[]
   auditEvents        AuditEvent[]
   reports            Report[]
-  proposedIndicators Indicator[]  @relation("IndicatorProposedBy")
-  decidedIndicators  Indicator[]  @relation("IndicatorDecidedBy")
+  proposedIndicators Indicator[]         @relation("IndicatorProposedBy")
+  decidedIndicators  Indicator[]         @relation("IndicatorDecidedBy")
   exclusions         Exclusion[]
   createdIncidents   Incident[]
   incidentReports    IncidentReport[]
   incidentIndicators IncidentIndicator[]
   incidentComments   IncidentComment[]
+  quarantineActions  QuarantineAction[]
 
   @@map("users")
 }
@@ -317,7 +319,8 @@ model Mailbox {
   /// Arriendo de la sincronización (como la cola, D-054): mientras sea reciente, nadie más sincroniza este buzón.
   syncStartedAt  DateTime?    @map("sync_started_at") @db.Timestamptz(3)
 
-  messages IndexedMessage[]
+  messages          IndexedMessage[]
+  quarantineActions QuarantineAction[]
 
   @@map("mailboxes")
 }
@@ -487,6 +490,7 @@ model Incident {
   reports    IncidentReport[]
   indicators IncidentIndicator[]
   comments   IncidentComment[]
+  actions    QuarantineAction[]
 
   @@index([status, updatedAt])
   @@index([updatedAt])
@@ -539,4 +543,64 @@ model IncidentComment {
 
   @@index([incidentId, createdAt])
   @@map("incident_comments")
+}
+
+// ---------------------------------------------------------------------------------------------
+// M7: cuarentena y restauración (D-008, D-013). Mismos valores que ActionType y ActionStatus en
+// src/contract/schemas/response.ts (test/prisma-enums.test.ts falla si se separan).
+
+enum ActionType {
+  quarantine
+  restore
+
+  @@map("action_type")
+}
+
+enum ActionStatus {
+  done
+  failed
+
+  @@map("action_status")
+}
+
+/// Acción de cuarentena o de restauración sobre un mensaje del laboratorio, aprobada por una
+/// persona dentro de un incidente. Única por (incidente, mensaje, tipo): repetir no mueve nada y
+/// un intento fallido se reintenta en la misma fila. Guarda la ubicación original y la nueva como
+/// fotografía (carpeta, UID y UIDVALIDITY), así la evidencia sobrevive aunque el índice cambie.
+/// messageId, mailboxId y dedupeKey son datos propios: SIN clave foránea a indexed_messages, para
+/// que la sincronización pueda seguir borrando filas cuando cambia el UIDVALIDITY (D-008).
+/// Nunca guarda asunto, remitente, direcciones ni bytes del correo.
+model QuarantineAction {
+  id                  String           @id @default(uuid()) @db.Uuid
+  /// Restrict: un incidente con acciones no se borra (no hay ruta para borrar incidentes).
+  incidentId          String           @map("incident_id") @db.Uuid
+  incident            Incident         @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  /// Id del mensaje indexado al aprobarlo (sin clave foránea, ver arriba).
+  messageId           String           @map("message_id") @db.Uuid
+  mailboxId           String           @map("mailbox_id") @db.Uuid
+  mailbox             Mailbox          @relation(fields: [mailboxId], references: [id], onDelete: Restrict)
+  /// Clave de deduplicación del mensaje (RF-07): lo reencuentra en el índice aunque cambie su id.
+  dedupeKey           String           @map("dedupe_key")
+  type                ActionType
+  status              ActionStatus
+  originalLocation    MessageLocation  @map("original_location")
+  originalUid         BigInt           @map("original_uid")
+  originalUidValidity BigInt           @map("original_uid_validity")
+  /// Solo con status = done (CHECK): dónde quedó según el COPYUID del servidor.
+  newLocation         MessageLocation? @map("new_location")
+  newUid              BigInt?          @map("new_uid")
+  newUidValidity      BigInt?          @map("new_uid_validity")
+  /// Código corto del fallo (p. ej. "uidvalidity_mismatch"). Nunca texto del servidor ni del correo.
+  failureCode         String?          @map("failure_code") @db.VarChar(64)
+  attempts            Int              @default(1)
+  /// Quién la aprobó. Restrict: una cuenta con acciones no se puede borrar (solo desactivar).
+  actorId             String           @map("actor_id") @db.Uuid
+  actor               User             @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([incidentId, messageId, type])
+  @@index([incidentId, createdAt])
+  @@index([mailboxId, dedupeKey])
+  @@map("quarantine_actions")
 }
