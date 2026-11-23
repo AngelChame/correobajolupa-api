@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
+import { AuditAction, recordAudit } from '../audit.js';
 import { requireRole } from '../auth/roles.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
@@ -114,6 +115,45 @@ export function createReportsRouter({ db, config, storage }: ReportsDeps) {
     }
     const hallazgos = await db.finding.findMany({ where: { reportId: id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
     res.json({ items: hallazgos.map(toFindingDto) });
+  });
+
+  // Reportante: el suyo. Analista y administrador: cualquiera. El csrfGuard ya exigió el token.
+  router.delete('/:reportId', conSesion, async (req, res) => {
+    const id = reportIdDe(req, res);
+    if (!id) return;
+    const actor = req.auth!.user;
+
+    const borrado = await db.$transaction(async (tx) => {
+      const fila = await tx.report.findFirst({ where: { id, ...visibles(req) }, select: { userId: true } });
+      if (!fila) return false;
+      // deleteMany y no delete: si otra petición lo borró justo antes, cuenta 0 y no lanza error.
+      const { count } = await tx.report.deleteMany({ where: { id } });
+      if (count === 0) return false;
+      // Hallazgos y enlaces se van en cascada. Solo IDs en la auditoría.
+      await recordAudit(tx, {
+        action: AuditAction.reportDelete,
+        result: 'success',
+        requestId: String(req.id),
+        actorId: actor.id,
+        targetType: 'report',
+        targetId: id,
+        metadata: { ownerId: fila.userId },
+      });
+      return true;
+    });
+    if (!borrado) {
+      sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      return;
+    }
+
+    // Los archivos se borran después de la fila: si esto falla, la fila ya no existe y la
+    // carpeta queda huérfana; la limpieza nocturna (paso 5) la recoge. Solo ID y código de error.
+    try {
+      await storage.deleteReport(id);
+    } catch (error) {
+      req.log.error({ reportId: id, errCode: (error as { code?: unknown }).code }, 'no se pudo borrar la carpeta de un reporte');
+    }
+    res.status(204).end();
   });
 
   return router;

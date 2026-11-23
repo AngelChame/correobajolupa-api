@@ -10,6 +10,7 @@ import { createDb } from '../../src/db/client.js';
 import type { Role } from '../../src/generated/prisma/enums.js';
 import { createLogger } from '../../src/logger.js';
 import { createDiskStorage } from '../../src/storage/disk.js';
+import type { ReportStorage } from '../../src/storage/storage.js';
 import { testConfig } from '../helpers.js';
 import { testDatabaseUrl } from './test-db.js';
 
@@ -29,12 +30,12 @@ const RAIZ_ALMACENAMIENTO = mkdtempSync(join(tmpdir(), 'cbl-reports-'));
 process.on('exit', () => rmSync(RAIZ_ALMACENAMIENTO, { recursive: true, force: true }));
 
 /** App de prueba con base real y almacenamiento en una subcarpeta temporal propia (storageDir). */
-export function crearApp(overrides: NodeJS.ProcessEnv = {}) {
+export function crearApp(overrides: NodeJS.ProcessEnv = {}, opciones: { storage?: ReportStorage } = {}) {
   const lineas: string[] = [];
   const logger = createLogger('info', { write: (linea: string) => void lineas.push(linea) });
   const storageDir = mkdtempSync(join(RAIZ_ALMACENAMIENTO, 'app-'));
   const config = testConfig({ DATABASE_URL: testDatabaseUrl(), STORAGE_DIR: storageDir, ...overrides });
-  const storage = createDiskStorage(storageDir);
+  const storage = opciones.storage ?? createDiskStorage(storageDir);
   return { app: createApp({ logger, db, config, decoyHash, storage }), lineas, logger, config, storageDir, storage };
 }
 
