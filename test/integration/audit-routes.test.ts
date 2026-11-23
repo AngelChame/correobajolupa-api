@@ -106,7 +106,7 @@ describe('GET /audit', () => {
   it('los eventos que dejan las rutas no llevan correos, contraseñas, tokens ni textos del cliente', async () => {
     const { app: a } = crearApp();
     // Entrada fallida con un correo y una contraseña marcados.
-    await request(a).post('/api/v1/auth/login').send({ email: 'marcador-correo@ejemplo.invalid', password: 'MARCADOR-CLAVE-123456' });
+    await request(a).post('/api/v1/auth/login').send({ email: 'marcador-correo@ejemplo.invalid', password: 'MARCADOR_CLAVE_123456' });
     const s = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
     // Incidente con título y comentario marcados, y un rechazo con texto del cliente.
     const inc = await request(a).post('/api/v1/incidents').set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf).send({ title: 'MARCADOR titulo', description: 'MARCADOR descripcion' });
