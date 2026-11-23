@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { InvalidStorageKeyError, type ReportStorage } from './storage.js';
 
@@ -59,6 +59,27 @@ export function createDiskStorage(storageDir: string): ReportStorage {
 
     async deleteReport(reportId) {
       await rm(reportDir(reportId), { recursive: true, force: true });
+    },
+
+    async listReports() {
+      let entries;
+      try {
+        entries = await readdir(root, { withFileTypes: true });
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 'ENOENT') return [];
+        throw error;
+      }
+      const found: { reportId: string; modifiedAt: Date }[] = [];
+      for (const entry of entries) {
+        // Solo carpetas reales con nombre UUID: ni enlaces simbólicos ni otros archivos.
+        if (!entry.isDirectory() || !REPORT_ID.test(entry.name)) continue;
+        try {
+          found.push({ reportId: entry.name, modifiedAt: (await stat(reportDir(entry.name))).mtime });
+        } catch {
+          // Se borró entre readdir y stat: ya no hay nada que reconciliar.
+        }
+      }
+      return found;
     },
   };
 }

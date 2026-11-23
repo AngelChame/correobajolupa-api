@@ -110,6 +110,7 @@ describe('worker: arriendos, reintentos y concurrencia', () => {
       save: () => Promise.reject(new Error('no se usa')),
       read: () => Promise.reject(Object.assign(new Error('MARCADOR_ERROR_INTERNO'), { code: 'EIO' })),
       deleteReport: () => Promise.resolve(),
+      listReports: () => Promise.resolve([]),
     };
     const { d, lineas } = deps(rota);
 

@@ -34,7 +34,7 @@ export function fakeDb(): Db {
 /** Almacenamiento falso para las pruebas unitarias: cualquier uso falla (igual que fakeDb). */
 export function fakeStorage(): ReportStorage {
   const sinDisco = () => Promise.reject(new Error('Esta prueba unitaria intentó usar el almacenamiento.'));
-  return { save: sinDisco, read: sinDisco, deleteReport: sinDisco };
+  return { save: sinDisco, read: sinDisco, deleteReport: sinDisco, listReports: sinDisco };
 }
 
 /** Hash señuelo compartido por las pruebas (se calcula una vez por archivo). */

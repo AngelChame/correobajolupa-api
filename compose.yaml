@@ -112,6 +112,7 @@ services:
       WORKER_POLL_MS: ${WORKER_POLL_MS:-}
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
+      CLEANUP_INTERVAL_MIN: ${CLEANUP_INTERVAL_MIN:-}
     volumes:
       - *reports-volume
     depends_on:

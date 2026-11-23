@@ -13,6 +13,11 @@ export interface ReportStorage {
   read(storageKey: string): Promise<Buffer>;
   /** Borra la carpeta del reporte con todo su contenido. No falla si ya no existe. */
   deleteReport(reportId: string): Promise<void>;
+  /**
+   * Carpetas de reportes que hay en el almacenamiento, con su última modificación. Solo las que
+   * tienen nombre de reportId (UUID); cualquier otra cosa se ignora. Para la reconciliación (D-038).
+   */
+  listReports(): Promise<{ reportId: string; modifiedAt: Date }[]>;
 }
 
 /** Error de una clave o un reportId con forma inválida (posible intento de salir de la carpeta). */

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -72,5 +72,16 @@ describe('almacenamiento en disco (D-038)', () => {
       await expect(storage.deleteReport(reportId), reportId).rejects.toBeInstanceOf(InvalidStorageKeyError);
     }
     expect(await readdir(root)).toEqual([]);
+  });
+
+  it('listReports devuelve solo carpetas con nombre UUID, con su fecha', async () => {
+    const a = randomUUID();
+    await storage.save(a, bytes);
+    await mkdir(join(root, 'no-es-uuid'));
+    await writeFile(join(root, randomUUID()), 'archivo suelto, no carpeta');
+    const lista = await storage.listReports();
+    expect(lista.map((c) => c.reportId)).toEqual([a]);
+    expect(lista[0]!.modifiedAt).toBeInstanceOf(Date);
+    expect(await createDiskStorage(join(root, 'no-existe')).listReports()).toEqual([]);
   });
 });

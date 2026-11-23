@@ -87,6 +87,9 @@ const Env = z
     WORKER_POLL_MS: enteroEntre(100, 60_000, 1000),
     JOB_LEASE_SECONDS: enteroEntre(5, 3600, 120),
     JOB_MAX_ATTEMPTS: enteroEntre(1, 10, 3),
+    // Cada cuántos minutos el worker borra reportes vencidos (7 días), sesiones vencidas y
+    // carpetas huérfanas (D-012, D-034, D-038). Entre 1 minuto y 24 horas.
+    CLEANUP_INTERVAL_MIN: enteroEntre(1, 1440, 60),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {

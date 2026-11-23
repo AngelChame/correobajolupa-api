@@ -1,6 +1,7 @@
 import { loadConfig } from './config.js';
 import { connectDb, disconnectDb } from './db/client.js';
 import { createLogger } from './logger.js';
+import { runCleanupSchedule } from './queue/cleanup.js';
 import { runWorker } from './queue/loop.js';
 import { createDiskStorage } from './storage/disk.js';
 
@@ -27,18 +28,25 @@ function cerrar(signal: string) {
 process.on('SIGTERM', () => cerrar('SIGTERM'));
 process.on('SIGINT', () => cerrar('SIGINT'));
 
-logger.info({ pollMs: config.WORKER_POLL_MS, leaseSeconds: config.JOB_LEASE_SECONDS }, 'worker iniciado');
-await runWorker(
-  {
-    db,
-    storage,
-    logger,
-    institutionalDomains: config.INSTITUTIONAL_DOMAINS,
-    leaseSeconds: config.JOB_LEASE_SECONDS,
-    maxAttempts: config.JOB_MAX_ATTEMPTS,
-  },
-  { pollMs: config.WORKER_POLL_MS, signal: apagado.signal },
+logger.info(
+  { pollMs: config.WORKER_POLL_MS, leaseSeconds: config.JOB_LEASE_SECONDS, cleanupIntervalMin: config.CLEANUP_INTERVAL_MIN },
+  'worker iniciado',
 );
+// La cola y la limpieza programada corren a la vez; las dos terminan con SIGTERM.
+await Promise.all([
+  runWorker(
+    {
+      db,
+      storage,
+      logger,
+      institutionalDomains: config.INSTITUTIONAL_DOMAINS,
+      leaseSeconds: config.JOB_LEASE_SECONDS,
+      maxAttempts: config.JOB_MAX_ATTEMPTS,
+    },
+    { pollMs: config.WORKER_POLL_MS, signal: apagado.signal },
+  ),
+  runCleanupSchedule({ db, storage, logger }, { intervalMs: config.CLEANUP_INTERVAL_MIN * 60_000, signal: apagado.signal }),
+]);
 await disconnectDb();
 logger.info('worker detenido');
 process.exit(0);

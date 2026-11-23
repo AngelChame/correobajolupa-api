@@ -17,6 +17,7 @@ export const AuditAction = {
   reportCreate: 'report.create',
   reportDelete: 'report.delete',
   bootstrapAdmin: 'system.bootstrap_admin',
+  cleanup: 'system.cleanup',
 } as const;
 
 export type AuditEntry = {

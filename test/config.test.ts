@@ -82,6 +82,7 @@ describe('loadConfig', () => {
       WORKER_POLL_MS: 1000,
       JOB_LEASE_SECONDS: 120,
       JOB_MAX_ATTEMPTS: 3,
+      CLEANUP_INTERVAL_MIN: 60,
     });
   });
 
@@ -109,5 +110,7 @@ describe('loadConfig', () => {
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, MAX_EML_BYTES: '0' })).toContain('MAX_EML_BYTES');
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, JOB_MAX_ATTEMPTS: '0' })).toContain('JOB_MAX_ATTEMPTS');
     expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, WORKER_POLL_MS: '10' })).toContain('WORKER_POLL_MS');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, CLEANUP_INTERVAL_MIN: '0' })).toContain('CLEANUP_INTERVAL_MIN');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, CLEANUP_INTERVAL_MIN: '2000' })).toContain('CLEANUP_INTERVAL_MIN');
   });
 });
