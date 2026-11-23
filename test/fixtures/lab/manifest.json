@@ -407,7 +407,7 @@
         "D3"
       ],
       "falseCandidates": [],
-      "note": "Dominio internacionalizado en punycode (nоmina-avisos.example con o cirílica)."
+      "note": "Dominio internacionalizado en punycode (nomina-avisos.example escrito con una o cirílica, U+043E)."
     },
     {
       "campaign": "D",

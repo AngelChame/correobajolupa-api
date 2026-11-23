@@ -163,13 +163,14 @@ describe('higiene de los archivos del laboratorio', () => {
     }
   });
 
-  it('UTF-8 válido y sin caracteres ocultos (controles, formato, dirección de texto)', () => {
-    for (const f of files) {
+  it('UTF-8 válido y sin caracteres ocultos ni que imiten letras (controles, formato, cirílico...)', () => {
+    // El dominio internacionalizado de D va en punycode: ningún archivo lleva la letra que imita.
+    for (const f of [...files, 'manifest.json']) {
       const bytes = raw(f);
       const text = bytes.toString('utf8');
       expect(Buffer.from(text, 'utf8').equals(bytes), f).toBe(true);
-      // Solo ASCII imprimible, CRLF y letras o signos latinos (á, ñ, ¿...).
-      expect(text, f).toMatch(/^[\r\n\x20-\x7e¡-ÿ]*$/);
+      // Solo ASCII imprimible, CRLF y letras o signos latinos (U+00A1 a U+00FF: á, ñ, ¿...).
+      expect(text, f).toMatch(/^[\r\n\x20-\x7e\u00a1-\u00ff]*$/);
     }
   });
 
