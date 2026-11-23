@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites) y M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada) hechos; contrato OpenAPI 0.2.2. Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites) y M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada) hechos; contrato OpenAPI 0.3.0 (declara también M2 a M7, que aún no se implementan). Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
