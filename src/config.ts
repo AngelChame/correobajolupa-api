@@ -119,6 +119,10 @@ const Env = z
 
     // --- M4: IMAP del laboratorio (Dovecot, D-043). ---
     ...ImapLabEnv.shape,
+    // Sincronización de un buzón: mensajes como mucho (lo demás se ignora y se cuenta) y tiempo
+    // máximo. El tiempo queda por debajo de los 60 s del proxy (nº 28).
+    SYNC_MAX_MESSAGES: enteroEntre(1, 5000, 500),
+    SYNC_BUDGET_MS: enteroEntre(1000, 55_000, 45_000),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {

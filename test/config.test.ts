@@ -121,6 +121,13 @@ describe('loadConfig', () => {
     }
   });
 
+  it('SYNC_MAX_MESSAGES y SYNC_BUDGET_MS: valores por defecto y rangos', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA })).toMatchObject({ SYNC_MAX_MESSAGES: 500, SYNC_BUDGET_MS: 45_000 });
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA, SYNC_BUDGET_MS: '55000' }).SYNC_BUDGET_MS).toBe(55_000);
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, SYNC_BUDGET_MS: '60000' })).toContain('SYNC_BUDGET_MS');
+    expect(mensajeDeError({ DATABASE_URL: URL_VALIDA, SYNC_MAX_MESSAGES: '0' })).toContain('SYNC_MAX_MESSAGES');
+  });
+
   it('loadImapLabConfig lee solo las variables del laboratorio, sin DATABASE_URL', () => {
     expect(loadImapLabConfig({})).toEqual({ IMAP_LAB_HOST: 'imap', IMAP_LAB_PORT: 143 });
     expect(loadImapLabConfig({ IMAP_LAB_PASSWORD: 'MARCADOR_IMAP_16+' }).IMAP_LAB_PASSWORD).toBe('MARCADOR_IMAP_16+');

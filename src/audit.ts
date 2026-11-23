@@ -16,6 +16,7 @@ export const AuditAction = {
   activate: 'user.activate',
   reportCreate: 'report.create',
   reportDelete: 'report.delete',
+  mailboxSync: 'mailbox.sync',
   bootstrapAdmin: 'system.bootstrap_admin',
   cleanup: 'system.cleanup',
 } as const;
