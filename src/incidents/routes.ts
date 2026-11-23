@@ -1,15 +1,17 @@
-import express, { type Request } from 'express';
+import express, { type Request, type Response } from 'express';
 import { AuditAction, recordAudit } from '../audit.js';
 import { requireRole } from '../auth/roles.js';
-import { CreateIncidentBody, IncidentQuery, UpdateIncidentBody } from '../contract/schemas/incidents.js';
+import { AddIncidentIndicatorBody, AddIncidentReportBody, CreateIncidentBody, IncidentQuery, UpdateIncidentBody } from '../contract/schemas/incidents.js';
 import type { Db } from '../db/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { sendError } from '../http/errors.js';
 import { parseBody, parseQuery } from '../http/validate.js';
 import { isUuid, uuidParam } from '../lab/routes.js';
 import { INCIDENT_DETAIL_SELECT, INCIDENT_SUMMARY_SELECT, toIncidentDetailDto, toIncidentSummaryDto } from './dto.js';
-import { canTransition, isFinal } from './status.js';
+import { canTransition, FINAL_STATUSES, isFinal } from './status.js';
 
 export type IncidentsDeps = { db: Db };
+type Tx = Prisma.TransactionClient;
 
 /** Mensajes fijos: nunca repiten el título, la descripción ni nada que mande el cliente. */
 const INCIDENT_NOT_FOUND = 'El incidente no existe.';
@@ -26,18 +28,31 @@ type IncidentAction = (typeof AuditAction)[
   | 'incidentIndicatorRemove'
   | 'incidentComment'];
 
-type RejectionReason = 'invalid_body' | 'not_found' | 'final' | 'invalid_transition' | 'status_changed';
+type RejectionReason =
+  | 'invalid_body'
+  | 'not_found'
+  | 'final'
+  | 'invalid_transition'
+  | 'status_changed'
+  | 'report_not_found'
+  | 'indicator_not_found'
+  | 'already_linked'
+  | 'not_linked';
+
+/** ID del reporte o del indicador de una asociación, solo si ya se validó como UUID. */
+type LinkRef = { reportId: string } | { indicatorId: string } | Record<string, never>;
 
 /**
  * Audita un rechazo (400, 404 o 409) como la entrega simulada y los indicadores: solo el motivo
- * y los IDs ya validados como UUID (un ID mal formado en la URL no se guarda). Nunca el título, la descripción ni el comentario (P-18). Si la
- * auditoría falla, se registra en pino y la respuesta no cambia.
+ * y los IDs ya validados como UUID (un ID mal formado en la URL o en el cuerpo no se guarda).
+ * Nunca el título, la descripción ni el comentario (P-18). Si la auditoría falla, se registra en
+ * pino y la respuesta no cambia.
  */
 async function auditRejection(
   db: Db,
   req: Request,
   action: IncidentAction,
-  entry: { reason: RejectionReason; incidentId?: string },
+  entry: { reason: RejectionReason; incidentId?: string | undefined; link?: LinkRef },
 ): Promise<void> {
   await recordAudit(db, {
     action,
@@ -46,8 +61,15 @@ async function auditRejection(
     actorId: req.auth!.user.id,
     targetType: 'incident',
     ...(entry.incidentId ? { targetId: entry.incidentId } : {}),
-    metadata: { reason: entry.reason },
+    metadata: { ...entry.link, reason: entry.reason },
   }).catch(() => req.log.error('no se pudo registrar la auditoría del incidente'));
+}
+
+/** Para deshacer una transacción con un motivo de rechazo (409 o 404). */
+class Rechazo extends Error {
+  constructor(readonly reason: 'final' | 'not_linked') {
+    super(reason);
+  }
 }
 
 /**
@@ -186,5 +208,180 @@ export function createIncidentsRouter({ db }: IncidentsDeps) {
     res.json(await detalle(id));
   });
 
+  /**
+   * Asociaciones con reportes e indicadores: lo mismo para los dos, cambia la tabla. Cualquier
+   * estado de indicador se puede asociar (M7 decide cuáles usa). Analista y administrador ven
+   * todos los reportes, así que aquí no hay "ajeno".
+   */
+  const ASOCIACIONES = {
+    report: {
+      param: 'reportId',
+      body: AddIncidentReportBody,
+      add: AuditAction.incidentReportAdd,
+      remove: AuditAction.incidentReportRemove,
+      notFoundReason: 'report_not_found',
+      notFound: 'El reporte no existe.',
+      taken: 'El reporte ya está asociado al incidente.',
+      notLinked: 'El reporte no está asociado al incidente.',
+      ref: (id: string): LinkRef => ({ reportId: id }),
+      exists: async (id: string) => (await db.report.count({ where: { id } })) > 0,
+      link: (tx: Tx, incidentId: string, id: string, addedById: string) => tx.incidentReport.create({ data: { incidentId, reportId: id, addedById } }),
+      unlink: async (tx: Tx, incidentId: string, id: string) => (await tx.incidentReport.deleteMany({ where: { incidentId, reportId: id } })).count,
+    },
+    indicator: {
+      param: 'indicatorId',
+      body: AddIncidentIndicatorBody,
+      add: AuditAction.incidentIndicatorAdd,
+      remove: AuditAction.incidentIndicatorRemove,
+      notFoundReason: 'indicator_not_found',
+      notFound: 'El indicador no existe.',
+      taken: 'El indicador ya está asociado al incidente.',
+      notLinked: 'El indicador no está asociado al incidente.',
+      ref: (id: string): LinkRef => ({ indicatorId: id }),
+      exists: async (id: string) => (await db.indicator.count({ where: { id } })) > 0,
+      link: (tx: Tx, incidentId: string, id: string, addedById: string) => tx.incidentIndicator.create({ data: { incidentId, indicatorId: id, addedById } }),
+      unlink: async (tx: Tx, incidentId: string, id: string) => (await tx.incidentIndicator.deleteMany({ where: { incidentId, indicatorId: id } })).count,
+    },
+  } as const;
+
+  /**
+   * Dentro de la transacción: sube updatedAt solo si el incidente no es final. Si otra petición lo
+   * cerró justo antes, deshace todo con 409.
+   */
+  async function tocarSiAbierto(tx: Tx, id: string): Promise<void> {
+    const { count } = await tx.incident.updateMany({ where: { id, status: { notIn: FINAL_STATUSES } }, data: { updatedAt: new Date() } });
+    if (count === 0) throw new Rechazo('final');
+  }
+
+  function asociar(tipo: keyof typeof ASOCIACIONES) {
+    const cfg = ASOCIACIONES[tipo];
+    return async (req: Request, res: Response) => {
+      const paramId = isUuid(req.params.incidentId) ? req.params.incidentId : undefined;
+      const parsed = cfg.body.safeParse(req.body);
+      if (!parsed.success) await auditRejection(db, req, cfg.add, { reason: 'invalid_body', incidentId: paramId });
+      const body = parseBody(cfg.body, req, res);
+      if (!body) return;
+      const targetId = (body as Record<string, string>)[cfg.param]!;
+      const link = cfg.ref(targetId);
+      if (!paramId) await auditRejection(db, req, cfg.add, { reason: 'not_found', link });
+      const id = uuidParam(req, res, 'incidentId', INCIDENT_NOT_FOUND);
+      if (!id) return;
+
+      const incidente = await db.incident.findUnique({ where: { id }, select: { status: true } });
+      if (!incidente) {
+        await auditRejection(db, req, cfg.add, { reason: 'not_found', incidentId: id, link });
+        sendError(req, res, 404, 'not_found', INCIDENT_NOT_FOUND);
+        return;
+      }
+      if (!(await cfg.exists(targetId))) {
+        await auditRejection(db, req, cfg.add, { reason: cfg.notFoundReason, incidentId: id, link });
+        sendError(req, res, 404, 'not_found', cfg.notFound);
+        return;
+      }
+      if (isFinal(incidente.status)) {
+        await auditRejection(db, req, cfg.add, { reason: 'final', incidentId: id, link });
+        sendError(req, res, 409, 'conflict', INCIDENT_FINAL);
+        return;
+      }
+
+      const actor = req.auth!.user;
+      try {
+        await db.$transaction(async (tx) => {
+          await tocarSiAbierto(tx, id);
+          await cfg.link(tx, id, targetId, actor.id);
+          await recordAudit(tx, {
+            action: cfg.add,
+            result: 'success',
+            requestId: String(req.id),
+            actorId: actor.id,
+            targetType: 'incident',
+            targetId: id,
+            metadata: link,
+          });
+        });
+      } catch (error) {
+        const rechazo = clasificar(error);
+        if (!rechazo) throw error;
+        // P2003: el reporte o el indicador se borró entre la comprobación y la inserción.
+        const [reason, status, message] =
+          rechazo === 'final' ? (['final', 409, INCIDENT_FINAL] as const)
+          : rechazo === 'duplicate' ? (['already_linked', 409, cfg.taken] as const)
+          : ([cfg.notFoundReason, 404, cfg.notFound] as const);
+        await auditRejection(db, req, cfg.add, { reason, incidentId: id, link });
+        sendError(req, res, status, status === 409 ? 'conflict' : 'not_found', message);
+        return;
+      }
+      res.json(await detalle(id));
+    };
+  }
+
+  function quitar(tipo: keyof typeof ASOCIACIONES) {
+    const cfg = ASOCIACIONES[tipo];
+    return async (req: Request, res: Response) => {
+      const rawTarget = req.params[cfg.param];
+      const link = isUuid(rawTarget) ? cfg.ref(rawTarget) : {};
+      if (!isUuid(req.params.incidentId)) await auditRejection(db, req, cfg.remove, { reason: 'not_found', link });
+      const id = uuidParam(req, res, 'incidentId', INCIDENT_NOT_FOUND);
+      if (!id) return;
+
+      const incidente = await db.incident.findUnique({ where: { id }, select: { status: true } });
+      if (!incidente) {
+        await auditRejection(db, req, cfg.remove, { reason: 'not_found', incidentId: id, link });
+        sendError(req, res, 404, 'not_found', INCIDENT_NOT_FOUND);
+        return;
+      }
+      // Un ID mal formado no puede estar asociado: 404, sin guardar lo que mandó el cliente.
+      if (!isUuid(rawTarget)) {
+        await auditRejection(db, req, cfg.remove, { reason: 'not_linked', incidentId: id });
+        sendError(req, res, 404, 'not_found', cfg.notLinked);
+        return;
+      }
+      if (isFinal(incidente.status)) {
+        await auditRejection(db, req, cfg.remove, { reason: 'final', incidentId: id, link });
+        sendError(req, res, 409, 'conflict', INCIDENT_FINAL);
+        return;
+      }
+
+      const actor = req.auth!.user;
+      try {
+        await db.$transaction(async (tx) => {
+          if ((await cfg.unlink(tx, id, rawTarget)) === 0) throw new Rechazo('not_linked');
+          await tocarSiAbierto(tx, id);
+          await recordAudit(tx, {
+            action: cfg.remove,
+            result: 'success',
+            requestId: String(req.id),
+            actorId: actor.id,
+            targetType: 'incident',
+            targetId: id,
+            metadata: link,
+          });
+        });
+      } catch (error) {
+        if (!(error instanceof Rechazo)) throw error;
+        await auditRejection(db, req, cfg.remove, { reason: error.reason, incidentId: id, link });
+        if (error.reason === 'final') sendError(req, res, 409, 'conflict', INCIDENT_FINAL);
+        else sendError(req, res, 404, 'not_found', cfg.notLinked);
+        return;
+      }
+      res.status(204).end();
+    };
+  }
+
+  router.post('/incidents/:incidentId/reports', analista, asociar('report'));
+  router.delete('/incidents/:incidentId/reports/:reportId', analista, quitar('report'));
+  router.post('/incidents/:incidentId/indicators', analista, asociar('indicator'));
+  router.delete('/incidents/:incidentId/indicators/:indicatorId', analista, quitar('indicator'));
+
   return router;
+}
+
+/** Traduce un error de la transacción de asociar a un rechazo conocido, o null si es otro. */
+function clasificar(error: unknown): 'final' | 'duplicate' | 'missing' | null {
+  if (error instanceof Rechazo) return 'final';
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2002') return 'duplicate';
+    if (error.code === 'P2003') return 'missing';
+  }
+  return null;
 }

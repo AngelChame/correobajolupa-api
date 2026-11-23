@@ -20,6 +20,25 @@ const CARRERA = 'Otra persona cambió el incidente al mismo tiempo. Vuelve a car
 const VALIDAS = new Set(['received>analyzing', 'analyzing>contained', 'contained>closed', 'received>false_positive', 'analyzing>false_positive', 'contained>false_positive']);
 const FINALES = new Set(['closed', 'false_positive']);
 
+type Tipo = 'reports' | 'indicators';
+const asociar = (a: App, s: Sesion, id: string, tipo: Tipo, body: Record<string, unknown>) =>
+  request(a).post(`/api/v1/incidents/${id}/${tipo}`).set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf).send(body);
+const quitar = (a: App, s: Sesion, id: string, tipo: Tipo, targetId: string) =>
+  request(a).delete(`/api/v1/incidents/${id}/${tipo}/${targetId}`).set('Cookie', s.cookie).set('X-CSRF-Token', s.csrf);
+const campo = (tipo: Tipo) => (tipo === 'reports' ? 'reportId' : 'indicatorId');
+
+/** Reporte mínimo con un hallazgo (directo en la base: aquí no importa el análisis). */
+async function reporteDe(userId: string): Promise<string> {
+  const r = await db.report.create({ data: { userId, source: 'eml', storageKey: 'k/x', sizeBytes: 1, sha256: 'a'.repeat(64), subject: 'Asunto del correo' } });
+  await db.finding.create({ data: { reportId: r.id, ruleId: 'R1', ruleName: 'Reply-To', summary: 's', evidence: [], rulesVersion: 'v' } });
+  return r.id;
+}
+
+async function indicadorDe(userId: string, value = 'malo.example', status: 'proposed' | 'confirmed' | 'dismissed' = 'proposed'): Promise<string> {
+  const decidido = status === 'proposed' ? {} : { decidedById: userId, decidedAt: new Date() };
+  return (await db.indicator.create({ data: { type: 'domain', value, status, proposedById: userId, ...decidido } })).id;
+}
+
 async function crearIncidente(a: App, s: Sesion, body: Record<string, unknown> = { title: 'Campaña de becas' }): Promise<string> {
   const res = await crear(a, s, body);
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -260,5 +279,164 @@ describe('actualizar', () => {
     expect((await db.incident.findUniqueOrThrow({ where: { id } })).status).toBe('analyzing');
     const e = await db.auditEvent.findFirstOrThrow({ where: { action: 'incident.update', targetId: id } });
     expect(e).toMatchObject({ result: 'failure', metadata: { reason: 'status_changed' } });
+  });
+});
+
+describe('asociar y quitar reportes e indicadores', () => {
+  it('asociar devuelve el detalle con el reporte como en GET /reports y el indicador desactivado, en orden de asociación', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const reportante = await entrarComo(a, 'reporter', 'reportante@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const r1 = await reporteDe(reportante.userId);
+    const r2 = await reporteDe(analista.userId);
+    // Cualquier estado de indicador se puede asociar.
+    const i1 = await indicadorDe(analista.userId, 'malo.example', 'confirmed');
+    const i2 = await indicadorDe(analista.userId, 'otro-malo.example', 'dismissed');
+
+    await asociar(a, analista, id, 'reports', { reportId: r2 }).expect(200);
+    await asociar(a, analista, id, 'reports', { reportId: r1 }).expect(200);
+    await asociar(a, analista, id, 'indicators', { indicatorId: i2 }).expect(200);
+    const res = await asociar(a, analista, id, 'indicators', { indicatorId: i1 });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const inc = IncidentDetail.parse(res.body);
+    expect(inc).toMatchObject({ reportsCount: 2, indicatorsCount: 2 });
+    expect(inc.reports.map((r) => r.id)).toEqual([r2, r1]);
+    expect(inc.indicators.map((i) => i.id)).toEqual([i2, i1]);
+    // Mismo resumen que GET /reports.
+    const lista = (await request(a).get('/api/v1/reports').set('Cookie', analista.cookie).expect(200)).body.items as { id: string }[];
+    expect(inc.reports[1]).toEqual(lista.find((r) => r.id === r1));
+    expect(inc.reports[1]).toMatchObject({ findingsCount: 1, subject: 'Asunto del correo' });
+    expect(inc.indicators[1]).toMatchObject({ displayValue: 'malo[.]example', status: 'confirmed' });
+    expect(JSON.stringify(res.body)).not.toContain('malo.example');
+
+    const resumen = IncidentList.parse((await listar(a, analista).expect(200)).body).items[0];
+    expect(resumen).toMatchObject({ id, reportsCount: 2, indicatorsCount: 2 });
+  });
+
+  it.each(['reports', 'indicators'] as const)('%s: 400 sin ID o mal formado; 404 incidente u objetivo inexistente; 409 ya asociado', async (tipo) => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const objetivo = tipo === 'reports' ? await reporteDe(analista.userId) : await indicadorDe(analista.userId);
+    const genero = tipo === 'reports' ? 'El reporte' : 'El indicador';
+
+    for (const body of [{}, { [campo(tipo)]: 'no-es-uuid' }, { [campo(tipo)]: 5 }]) {
+      const res = await asociar(a, analista, id, tipo, body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(res.body).toMatchObject({ code: 'validation_error' });
+    }
+    // 400 antes que 404.
+    expect((await asociar(a, analista, UUID_INEXISTENTE, tipo, {})).status).toBe(400);
+    for (const malo of [UUID_INEXISTENTE, 'no-es-uuid']) {
+      const res = await asociar(a, analista, malo, tipo, { [campo(tipo)]: objetivo });
+      expect(res.status).toBe(404);
+      expect(res.body.message).toBe('El incidente no existe.');
+    }
+    const noExiste = await asociar(a, analista, id, tipo, { [campo(tipo)]: UUID_INEXISTENTE });
+    expect(noExiste.status).toBe(404);
+    expect(noExiste.body.message).toBe(`${genero} no existe.`);
+
+    await asociar(a, analista, id, tipo, { [campo(tipo)]: objetivo }).expect(200);
+    const otraVez = await asociar(a, analista, id, tipo, { [campo(tipo)]: objetivo });
+    expect(otraVez.status).toBe(409);
+    expect(otraVez.body).toMatchObject({ code: 'conflict', message: `${genero} ya está asociado al incidente.` });
+  });
+
+  it.each(['reports', 'indicators'] as const)('%s: quitar 204 y baja el conteo; 404 si el incidente no existe o no estaba asociado', async (tipo) => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const objetivo = tipo === 'reports' ? await reporteDe(analista.userId) : await indicadorDe(analista.userId);
+    const genero = tipo === 'reports' ? 'El reporte' : 'El indicador';
+    await asociar(a, analista, id, tipo, { [campo(tipo)]: objetivo }).expect(200);
+
+    for (const malo of [UUID_INEXISTENTE, 'no-es-uuid']) {
+      const res = await quitar(a, analista, malo, tipo, objetivo);
+      expect(res.status).toBe(404);
+      expect(res.body.message).toBe('El incidente no existe.');
+    }
+    for (const malo of [UUID_INEXISTENTE, 'no-es-uuid']) {
+      const res = await quitar(a, analista, id, tipo, malo);
+      expect(res.status).toBe(404);
+      expect(res.body.message).toBe(`${genero} no está asociado al incidente.`);
+    }
+    await quitar(a, analista, id, tipo, objetivo).expect(204);
+    expect((await quitar(a, analista, id, tipo, objetivo)).status).toBe(404);
+    const inc = IncidentDetail.parse((await ver(a, analista, id).expect(200)).body);
+    expect(inc.reportsCount + inc.indicatorsCount).toBe(0);
+    // Quitar no borra el reporte ni el indicador.
+    expect(tipo === 'reports' ? await db.report.count() : await db.indicator.count()).toBe(1);
+  });
+
+  it('cada cambio sube updatedAt; auditoría con IDs', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const reportId = await reporteDe(analista.userId);
+    const indicatorId = await indicadorDe(analista.userId);
+    let anterior = (await db.incident.findUniqueOrThrow({ where: { id } })).updatedAt;
+    const pasos = [
+      () => asociar(a, analista, id, 'reports', { reportId }).expect(200),
+      () => asociar(a, analista, id, 'indicators', { indicatorId }).expect(200),
+      () => quitar(a, analista, id, 'reports', reportId).expect(204),
+      () => quitar(a, analista, id, 'indicators', indicatorId).expect(204),
+    ];
+    for (const paso of pasos) {
+      await paso();
+      const ahora = (await db.incident.findUniqueOrThrow({ where: { id } })).updatedAt;
+      expect(ahora.getTime()).toBeGreaterThan(anterior.getTime());
+      anterior = ahora;
+    }
+    const eventos = await db.auditEvent.findMany({ where: { action: { startsWith: 'incident.' }, NOT: { action: 'incident.create' } }, orderBy: { createdAt: 'asc' } });
+    expect(eventos.map((e) => [e.action, e.result, e.targetId, e.metadata])).toEqual([
+      ['incident.report_add', 'success', id, { reportId }],
+      ['incident.indicator_add', 'success', id, { indicatorId }],
+      ['incident.report_remove', 'success', id, { reportId }],
+      ['incident.indicator_remove', 'success', id, { indicatorId }],
+    ]);
+  });
+
+  it.each(['closed', 'false_positive'] as const)('incidente %s: asociar y quitar son 409 y nada cambia', async (final) => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const reportId = await reporteDe(analista.userId);
+    const otroReporte = await reporteDe(analista.userId);
+    const indicatorId = await indicadorDe(analista.userId);
+    const otroIndicador = await indicadorDe(analista.userId, 'otro-malo.example');
+    await asociar(a, analista, id, 'reports', { reportId }).expect(200);
+    await asociar(a, analista, id, 'indicators', { indicatorId }).expect(200);
+    await db.incident.update({ where: { id }, data: { status: final } });
+    const antes = await db.incident.findUniqueOrThrow({ where: { id } });
+
+    for (const res of [
+      await asociar(a, analista, id, 'reports', { reportId: otroReporte }),
+      await asociar(a, analista, id, 'indicators', { indicatorId: otroIndicador }),
+      await quitar(a, analista, id, 'reports', reportId),
+      await quitar(a, analista, id, 'indicators', indicatorId),
+    ]) {
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ code: 'conflict', message: FINAL });
+    }
+    const despues = IncidentDetail.parse((await ver(a, analista, id).expect(200)).body);
+    expect(despues).toMatchObject({ reportsCount: 1, indicatorsCount: 1, updatedAt: antes.updatedAt.toISOString() });
+  });
+
+  it('borrar un reporte asociado (retención o borrado manual) lo quita del incidente; el incidente queda y el conteo baja', async () => {
+    const { app: a } = crearApp();
+    const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
+    const reportante = await entrarComo(a, 'reporter', 'reportante@ejemplo.invalid');
+    const id = await crearIncidente(a, analista);
+    const r1 = await reporteDe(reportante.userId);
+    const r2 = await reporteDe(reportante.userId);
+    await asociar(a, analista, id, 'reports', { reportId: r1 }).expect(200);
+    await asociar(a, analista, id, 'reports', { reportId: r2 }).expect(200);
+
+    await request(a).delete(`/api/v1/reports/${r1}`).set('Cookie', reportante.cookie).set('X-CSRF-Token', reportante.csrf).expect(204);
+    const inc = IncidentDetail.parse((await ver(a, analista, id).expect(200)).body);
+    expect(inc.reportsCount).toBe(1);
+    expect(inc.reports.map((r) => r.id)).toEqual([r2]);
+    expect(IncidentList.parse((await listar(a, analista).expect(200)).body).items[0]).toMatchObject({ id, reportsCount: 1 });
   });
 });

@@ -13,6 +13,9 @@ const SIGUIENTES: Record<IncidentStatus, readonly IncidentStatus[]> = {
   false_positive: [],
 };
 
+/** Estados finales: el incidente queda de solo lectura. */
+export const FINAL_STATUSES: IncidentStatus[] = (Object.keys(SIGUIENTES) as IncidentStatus[]).filter((s) => SIGUIENTES[s].length === 0);
+
 /** Si el incidente ya no admite cambios (título, descripción, estado, asociaciones ni comentarios). */
 export function isFinal(status: IncidentStatus): boolean {
   return SIGUIENTES[status].length === 0;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IncidentStatus } from '../src/contract/schemas/incidents.js';
-import { canTransition, isFinal } from '../src/incidents/status.js';
+import { canTransition, FINAL_STATUSES, isFinal } from '../src/incidents/status.js';
 
 // Matriz completa 5 x 5 de transiciones de un incidente (M6). Las únicas válidas:
 const VALIDAS = new Set([
@@ -32,5 +32,6 @@ describe('transiciones de estado de un incidente', () => {
 
   it('closed y false_positive son finales; los demás no', () => {
     expect(todos.filter(isFinal)).toEqual(['closed', 'false_positive']);
+    expect(FINAL_STATUSES).toEqual(['closed', 'false_positive']);
   });
 });
