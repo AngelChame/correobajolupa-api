@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { requireRole } from '../auth/roles.js';
 import { MailUnavailableError } from '../mail/provider.js';
 import type { Config } from '../config.js';
-import { MessageQuery } from '../contract/schemas/lab.js';
+import { MessageQuery, SimulatedDeliveryBody } from '../contract/schemas/lab.js';
 import type { Db } from '../db/client.js';
 import { sendError } from '../http/errors.js';
-import { parseQuery } from '../http/validate.js';
+import { parseBody, parseQuery } from '../http/validate.js';
 import type { MailProvider } from '../mail/provider.js';
 import type { ReportStorage } from '../storage/storage.js';
+import { ReportFileMissingError, ReportNotEmlError, ReportNotFoundError, simulateDelivery } from './delivery.js';
 import { MailboxNotFoundError, SyncInProgressError, SyncTimeoutError, syncMailbox } from './sync.js';
 import { MESSAGE_DETAIL_SELECT, MESSAGE_SUMMARY_SELECT, toMailboxDto, toMessageDetailDto, toMessageSummaryDto } from './dto.js';
 
@@ -52,7 +53,7 @@ export function sendLabError(req: Request, res: Response, error: unknown): boole
  * Rutas del laboratorio IMAP (M4): solo analista o administrador; el reportante recibe 403 y
  * queda en la auditoría (requireRole). En los registros solo van IDs y conteos (P-18).
  */
-export function createLabRouter({ db, config, openProvider }: LabDeps) {
+export function createLabRouter({ db, config, storage, openProvider }: LabDeps) {
   const router = express.Router();
   const analista = requireRole(db, 'analyst', 'admin');
 
@@ -80,6 +81,39 @@ export function createLabRouter({ db, config, openProvider }: LabDeps) {
       res.json({ ...r, finishedAt: r.finishedAt.toISOString() });
     } catch (error) {
       if (!sendLabError(req, res, error)) throw error;
+    }
+  });
+
+  // Entrega simulada (D-006): el .eml original del reporte entra a INBOX del buzón con APPEND.
+  // Simulación local dentro del Dovecot del laboratorio: no envía correo a ningún sitio.
+  router.post('/mailboxes/:mailboxId/simulated-delivery', analista, async (req, res) => {
+    const id = uuidParam(req, res, 'mailboxId', 'El buzón no existe.');
+    if (!id) return;
+    const body = parseBody(SimulatedDeliveryBody, req, res);
+    if (!body) return;
+    const actor = req.auth!.user;
+    try {
+      const r = await simulateDelivery(
+        { db, storage, logger: req.log, institutionalDomains: config.INSTITUTIONAL_DOMAINS, openProvider },
+        {
+          mailboxId: id,
+          reportId: body.reportId,
+          // Mismas reglas que GET /reports/{id} (hoy solo llegan analista y administrador: ven todos).
+          ...(actor.role === 'reporter' ? { ownerId: actor.id } : {}),
+          actorId: actor.id,
+          requestId: String(req.id),
+        },
+      );
+      const fila = await db.indexedMessage.findUniqueOrThrow({ where: { id: r.messageId }, select: MESSAGE_SUMMARY_SELECT });
+      res.status(201).json({ message: toMessageSummaryDto(fila) });
+    } catch (error) {
+      if (error instanceof ReportNotFoundError) sendError(req, res, 404, 'not_found', 'El reporte no existe.');
+      else if (error instanceof ReportFileMissingError) sendError(req, res, 404, 'not_found', 'El archivo del reporte ya no existe.');
+      else if (error instanceof ReportNotEmlError)
+        sendError(req, res, 400, 'validation_error', 'Solo se pueden entregar reportes subidos como .eml.', [
+          { field: 'reportId', message: 'El reporte se pegó como texto, no se subió como .eml.' },
+        ]);
+      else if (!sendLabError(req, res, error)) throw error;
     }
   });
 

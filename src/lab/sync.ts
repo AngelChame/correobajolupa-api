@@ -49,6 +49,25 @@ export class MailboxNotFoundError extends Error {
 /** El arriendo vence a los 60 s: más que el presupuesto máximo (55 s), así nunca se pisa a sí mismo. */
 const LEASE_SECONDS = 60;
 
+/**
+ * Toma el arriendo del buzón (sincronización o entrega simulada): devuelve su marca, o null si
+ * otro proceso lo tiene. Uno vencido (proceso muerto) se retoma.
+ */
+export async function acquireMailboxLease(db: Db, mailboxId: string): Promise<Date | null> {
+  const lease = await db.$queryRaw<{ sync_started_at: Date }[]>`
+    UPDATE mailboxes SET sync_started_at = now()
+    WHERE id = ${mailboxId}::uuid
+      AND (sync_started_at IS NULL OR sync_started_at < now() - make_interval(secs => ${LEASE_SECONDS}::int))
+    RETURNING sync_started_at`;
+  return lease[0]?.sync_started_at ?? null;
+}
+
+/** Suelta el arriendo solo si sigue siendo el nuestro (no el de otro proceso que lo retomó). */
+export async function releaseMailboxLease(db: Db, mailboxId: string, token: Date): Promise<void> {
+  await db.$executeRaw`
+    UPDATE mailboxes SET sync_started_at = NULL WHERE id = ${mailboxId}::uuid AND sync_started_at = ${token}`;
+}
+
 export type SyncDeps = {
   db: Db;
   logger: Logger;
@@ -96,13 +115,8 @@ export async function syncMailbox(deps: SyncDeps, mailboxId: string, context: Sy
   const mailbox = await db.mailbox.findUnique({ where: { id: mailboxId }, select: { id: true, address: true } });
   if (!mailbox) throw new MailboxNotFoundError();
 
-  // Arriendo atómico: solo una sincronización por buzón. Uno vencido (proceso muerto) se retoma.
-  const lease = await db.$queryRaw<{ sync_started_at: Date }[]>`
-    UPDATE mailboxes SET sync_started_at = now()
-    WHERE id = ${mailboxId}::uuid
-      AND (sync_started_at IS NULL OR sync_started_at < now() - make_interval(secs => ${LEASE_SECONDS}::int))
-    RETURNING sync_started_at`;
-  const token = lease[0]?.sync_started_at;
+  // Arriendo atómico: solo una sincronización (o entrega simulada) por buzón a la vez.
+  const token = await acquireMailboxLease(db, mailboxId);
   if (!token) throw new SyncInProgressError();
 
   const counts: Counts = { fetched: 0, added: 0, updated: 0, deleted: 0, ignored: 0, tooLarge: 0 };

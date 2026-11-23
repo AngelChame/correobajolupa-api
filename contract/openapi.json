@@ -1437,6 +1437,16 @@
               }
             }
           },
+          "409": {
+            "description": "Ya hay una sincronización o una entrega simulada de ese buzón en curso (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "El servidor IMAP del laboratorio o ClamAV no responden (`service_unavailable`).",
             "content": {

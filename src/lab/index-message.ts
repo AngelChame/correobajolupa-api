@@ -26,19 +26,34 @@ export function dedupeKey(messageId: string | null | undefined, raw?: Uint8Array
 }
 
 /**
- * Fecha del encabezado Date (la del mensaje, no la de llegada). null si falta o no se entiende.
- * Solo mira el bloque de encabezados y une las líneas plegadas.
+ * Valor de un encabezado (el primero con ese nombre), o null. Solo mira el bloque de encabezados
+ * (hasta 64 KiB) y une las líneas plegadas. El texto es del correo: nunca se interpreta.
  */
-export function headerDate(raw: Uint8Array): Date | null {
+const HEADER_PATTERNS = {
+  date: /^date:[ \t]*(.+?)[ \t]*$/im,
+  'message-id': /^message-id:[ \t]*(.+?)[ \t]*$/im,
+} as const;
+
+function headerValue(raw: Uint8Array, name: keyof typeof HEADER_PATTERNS): string | null {
   const buf = Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength);
   const crlf = buf.indexOf('\r\n\r\n');
   const lf = buf.indexOf('\n\n');
   const end = [crlf, lf].filter((i) => i >= 0).sort((a, b) => a - b)[0] ?? buf.length;
   const headers = buf.subarray(0, Math.min(end, 64 * 1024)).toString('latin1').replace(/\r?\n[ \t]+/g, ' ');
-  const value = /^date:[ \t]*(.+?)[ \t]*$/im.exec(headers)?.[1];
+  return HEADER_PATTERNS[name].exec(headers)?.[1] ?? null;
+}
+
+/** Fecha del encabezado Date (la del mensaje, no la de llegada). null si falta o no se entiende. */
+export function headerDate(raw: Uint8Array): Date | null {
+  const value = headerValue(raw, 'date');
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Message-ID del encabezado, o null si no trae. */
+export function headerMessageId(raw: Uint8Array): string | null {
+  return headerValue(raw, 'message-id');
 }
 
 export type IndexInput = {

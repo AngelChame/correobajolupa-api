@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { dedupeKey, headerDate } from '../src/lab/index-message.js';
+import { dedupeKey, headerDate, headerMessageId } from '../src/lab/index-message.js';
 
 // Clave de deduplicación (RF-07) y fecha del encabezado de los mensajes del laboratorio.
 const LAB = new URL('./fixtures/lab/', import.meta.url);
@@ -46,5 +46,19 @@ describe('headerDate', () => {
   it('null si falta o no se entiende', () => {
     expect(headerDate(Buffer.from('Subject: x\r\n\r\n'))).toBeNull();
     expect(headerDate(Buffer.from('Date: mañana temprano\r\n\r\n'))).toBeNull();
+  });
+});
+
+describe('headerMessageId', () => {
+  it('lee el Message-ID del encabezado y da la misma clave que el manifiesto', () => {
+    const raw = readFileSync(new URL('B1-factura.eml', LAB));
+    expect(headerMessageId(raw)).toBe('<b1.factura@lab.example>');
+    expect(dedupeKey(headerMessageId(raw), raw)).toBe('<b1.factura@lab.example>');
+  });
+
+  it('null si no trae (y entonces la clave es sha256:)', () => {
+    const raw = Buffer.from('From: a@lab.example\r\n\r\nMessage-ID: <en-el-cuerpo@lab.example>\r\n');
+    expect(headerMessageId(raw)).toBeNull();
+    expect(dedupeKey(headerMessageId(raw), raw)).toMatch(/^sha256:/);
   });
 });
