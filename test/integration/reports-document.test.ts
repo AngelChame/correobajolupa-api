@@ -95,7 +95,7 @@ describe('GET /reports/{reportId}/report: acceso y estados', () => {
     const r = await reporte(ana.userId);
 
     const { doc } = await informe(app, ana, r.id);
-    expect(doc).toMatchObject({ reportId: r.id, status: 'completed', guideVersion: 'g3-2026.11', findings: [], summary: { headline: HEADLINES.noFindings } });
+    expect(doc).toMatchObject({ reportId: r.id, status: 'completed', guideVersion: 'g4-2026.11', findings: [], summary: { headline: HEADLINES.noFindings } });
     expect(doc.notes.map((n) => n.kind)).toEqual(['no_findings']);
     esError(await request(app).get(`/api/v1/reports/${r.id}/report`).set('Cookie', luis.cookie), 404, 'not_found');
   });
