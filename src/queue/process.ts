@@ -1,9 +1,11 @@
 import type { Logger } from 'pino';
 import { analyze, defangEmail, defangHost, defangUrlValue, type AnalysisResult, type RawEvidence } from '../analysis/index.js';
+import { findUrlFinding, priorityOf } from '../analysis/rules.js';
 import { scanAttachments, type AttachmentScan, type ScanFn, type ScanSettings } from '../clamav/scan.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
+import { domainSuffixes } from '../indicators/exclusions.js';
 import type { ReportStorage } from '../storage/storage.js';
 
 /**
@@ -196,6 +198,19 @@ export async function processNext(deps: QueueDeps): Promise<Outcome> {
     // Sin el mensaje del error: podría citar contenido del correo.
     log.error({ errorCode: code, errName: (error as Error)?.name }, 'falló el análisis');
     return release(db, job, code, maxAttempts);
+  }
+
+  // La lista manual de exclusión (M5) también se respeta en R9. Solo se buscan los sufijos de
+  // hosts ya extraídos, mediante el índice de exclusions; nunca se consulta ninguna URL del correo.
+  if (result.findings.some((f) => f.ruleId === 'R9')) {
+    const suffixes = [...new Set(result.links.flatMap((l) => l.domain ? domainSuffixes(l.domain) : []))];
+    const excluded = suffixes.length
+      ? await db.exclusion.findMany({ where: { domain: { in: suffixes } }, select: { domain: true } })
+      : [];
+    const others = result.findings.filter((f) => f.ruleId !== 'R9');
+    const url = findUrlFinding(result.links, deps.institutionalDomains, excluded.map((e) => e.domain));
+    result.findings = url ? [...others, url] : others;
+    result.priority = priorityOf(result.findings);
   }
 
   // ClamAV (M2). Nunca lanza: un fallo deja el adjunto en error y el reporte sigue (P-05).

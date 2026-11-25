@@ -3,10 +3,11 @@ import type { Priority } from '../generated/prisma/enums.js';
 import { familiesOfDeclared, familiesOfExtension, familyOfDetected } from './attachments.js';
 import { ALLOWED_SCHEMES, isIpHost } from './links.js';
 import { imitatedDomain } from './lookalike.js';
+import { evaluarSenalesUrl, suficientesSenales } from './url-signals.js';
 import type { AnalyzedAttachment, AnalyzedLink, RawEvidence, RawFinding } from './types.js';
 
 /** Versión de las reglas: se guarda en cada hallazgo y en el reporte. Sube al cambiar una regla. */
-export const RULES_VERSION = 'm2-2026.11';
+export const RULES_VERSION = 'm9-2026.11';
 
 /** Evidencias por hallazgo como mucho (un correo con 200 enlaces malos no genera 200). */
 const MAX_EVIDENCE = 10;
@@ -49,6 +50,11 @@ const RULES: Record<RuleId, { name: string; summary: string; weight: number }> =
     summary: 'Un adjunto disfraza su tipo: doble extensión, caracteres que invierten el nombre o un contenido que no coincide con su extensión o su tipo declarado.',
     // Peso provisional (decisión abierta nº 3).
     weight: 3,
+  },
+  R9: {
+    name: 'Señales en la dirección de un enlace',
+    summary: 'La forma de una dirección web presenta señales que conviene revisar; ninguna demuestra peligro por sí sola.',
+    weight: 2,
   },
 };
 
@@ -107,9 +113,35 @@ export type RuleInput = {
   institutionalDomains: readonly string[];
 };
 
-/** Aplica R1 a R7. Ninguna regla prueba phishing por sí sola: cada hallazgo es una señal con evidencia. */
+/** Hallazgo R9 para enlaces no excluidos; se puede recalcular con exclusiones manuales del worker. */
+export function findUrlFinding(
+  links: readonly AnalyzedLink[],
+  institutionalDomains: readonly string[],
+  excludedDomains: readonly string[] = [],
+): RawFinding | null {
+  const evidence: RawEvidence[] = [];
+  const excluded = [...institutionalDomains, ...excludedDomains].map((d) => d.toLowerCase());
+  for (const link of links) {
+    if (link.scheme !== 'http' && link.scheme !== 'https') continue;
+    const host = link.domain;
+    if (!host || excluded.some((d) => host === d || host.endsWith(`.${d}`))) continue;
+    const signals = evaluarSenalesUrl(link.raw);
+    if (!suficientesSenales(signals)) continue;
+    if (evidence.length >= MAX_EVIDENCE) break;
+    evidence.push({ label: 'Enlace', value: link.normalizedUrl, kind: 'url' });
+    for (const s of signals) {
+      if (evidence.length >= MAX_EVIDENCE) break;
+      evidence.push({ label: 'Señal', value: s.label, kind: 'text' });
+    }
+  }
+  return evidence.length > 0
+    ? { ruleId: 'R9', ruleName: RULES.R9.name, summary: RULES.R9.summary, evidence }
+    : null;
+}
+
+/** Aplica R1 a R7 y R9. Ninguna regla prueba phishing por sí sola. */
 export function applyRules({ fromAddress, replyTo, links, attachments = [], institutionalDomains }: RuleInput): RawFinding[] {
-  const evidence: Record<RuleId, RawEvidence[]> = { R1: [], R2: [], R3: [], R4: [], R5: [], R6: [], R7: [] };
+  const evidence: Record<RuleId, RawEvidence[]> = { R1: [], R2: [], R3: [], R4: [], R5: [], R6: [], R7: [], R9: [] };
   const add = (rule: RuleId, ...items: RawEvidence[]) => {
     if (evidence[rule].length < MAX_EVIDENCE) evidence[rule].push(...items);
   };
@@ -175,9 +207,11 @@ export function applyRules({ fromAddress, replyTo, links, attachments = [], inst
     add('R7', ...items);
   }
 
-  return (Object.keys(RULES) as RuleId[])
+  const findings = (Object.keys(RULES) as RuleId[])
     .filter((id) => evidence[id].length > 0)
     .map((id) => ({ ruleId: id, ruleName: RULES[id].name, summary: RULES[id].summary, evidence: evidence[id] }));
+  const urlFinding = findUrlFinding(links, institutionalDomains);
+  return urlFinding ? [...findings, urlFinding] : findings;
 }
 
 /** Prioridad provisional (pesos R1=1; R2-R5=2; R6 y R7=3): < 2 low, 2-3 medium, ≥ 4 high. */
