@@ -283,6 +283,28 @@ model FeedEntry {
   @@map("feed_entries")
 }
 
+/// Resultado local por hash de URL normalizada; nunca guarda la URL ni el contenido del correo.
+model ReputationCache {
+  urlHash   String   @id @map("url_hash") @db.Char(64)
+  state     String   @db.VarChar(20)
+  malicious Int?
+  total     Int?
+  checkedAt DateTime @map("checked_at") @db.Timestamptz(3)
+
+  @@index([checkedAt])
+  @@map("reputation_cache")
+}
+
+/// Presupuesto local compartido por todos los workers; una sola fila bloqueada por transacción.
+model ReputationQuota {
+  id            Int      @id
+  dayUtc        String   @map("day_utc") @db.VarChar(10)
+  used          Int      @default(0)
+  nextAllowedAt DateTime @map("next_allowed_at") @db.Timestamptz(3)
+
+  @@map("reputation_quota")
+}
+
 /// Adjunto de un reporte (M2). Solo metadatos: los bytes NO se guardan en ningún lado; el worker
 /// los extrae del .eml en memoria, calcula el SHA-256 y los manda a ClamAV. Nunca se ejecutan
 /// ni se descomprimen (D-018).

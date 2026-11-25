@@ -106,6 +106,8 @@ R10 compara **hashes** de las URL normalizadas de M5 contra una tabla local: nun
 
 Los feeds externos están **apagados por defecto**. `OPENPHISH_FEED_ENABLED=true` habilita la lista comunitaria de OpenPhish; `URLHAUS_AUTH_KEY` habilita URLhaus con una clave propia; `FEED_REFRESH_HOURS` vale 12 si se deja vacío. Solo el worker descarga desde direcciones fijas, con límite de tiempo/tamaño y actualización transaccional: si falla una descarga conserva el último snapshot. La clave queda únicamente en `.env` y nunca se registra. No se necesitan claves para las pruebas: se usan respuestas sintéticas.
 
+La preparación local de reputación incluye interpretación prudente de conteos, selección de hasta cinco URL normalizadas, caché por hash de 24 horas y presupuesto compartido (16 segundos entre reservas y 500 al día UTC). **Aún no existe un cliente HTTP de reputación ni se conecta esta preparación al worker**: ninguna reserva produce una consulta externa por sí sola.
+
 **Permisos de uso:** OpenPhish Community Feed permite investigación personal o académica pero restringe la redistribución y exige capacidad legal; antes de activarlo en una demo pública se deben revisar sus [términos](https://www.openphish.com/terms.html) y obtener la autorización correspondiente. URLhaus requiere cuenta/clave y [uso razonable no comercial](https://abuse.ch/terms-of-use/). Fuente: [OpenPhish](https://www.openphish.com/phishing_feeds.html) y [URLhaus](https://urlhaus.abuse.ch/api/). Ningún feed se activa automáticamente al desplegar.
 
 ## Adjuntos y ClamAV (M2)
