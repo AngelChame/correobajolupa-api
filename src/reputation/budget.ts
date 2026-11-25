@@ -46,3 +46,12 @@ export async function reserveLocalBudget(db: Db, now: Date): Promise<BudgetDecis
     return decision;
   });
 }
+
+/** Un 429 puede indicar cuota externa agotada: no insistimos más durante este día UTC. */
+export async function markLocalBudgetExhausted(db: Db, now: Date): Promise<void> {
+  if (!Number.isFinite(now.getTime())) throw new Error('invalid_budget_time');
+  await db.reputationQuota.updateMany({
+    where: { id: 1, dayUtc: now.toISOString().slice(0, 10) },
+    data: { used: MAX_DAILY_QUERIES },
+  });
+}

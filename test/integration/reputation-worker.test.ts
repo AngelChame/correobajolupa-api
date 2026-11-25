@@ -93,6 +93,15 @@ describe('worker y reputación externa simulada', () => {
     expect(detail.reputation).toMatchObject({ status, items: [{ state }] });
     const document = ReportDocument.parse((await request(app).get(`/api/v1/reports/${id}/report`).set('Cookie', user.cookie)).body);
     expect(document.notes.some((note) => note.kind === 'reputation_unavailable')).toBe(code === 429);
+    if (code === 429) {
+      expect((await db.reputationQuota.findUniqueOrThrow({ where: { id: 1 } })).used).toBe(500);
+      const next = await upload(app, user.cookie, user.csrf);
+      expect(await processNext(deps(storage, fetchFn, KEY).settings)).toBe('done');
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect((await db.report.findUniqueOrThrow({ where: { id: next } })).reputation).toMatchObject({
+        status: 'unavailable', items: [{ state: 'not_checked' }],
+      });
+    }
   });
 
   it('sin clave no se reserva cuota ni se llama a la red; con excepción termina completed', async () => {

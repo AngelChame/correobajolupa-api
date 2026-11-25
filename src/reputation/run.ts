@@ -2,7 +2,7 @@ import { defangUrlValue } from '../analysis/links.js';
 import type { AnalyzedLink, RawFinding } from '../analysis/types.js';
 import type { Db } from '../db/client.js';
 import { configExclusions, covers } from '../indicators/exclusions.js';
-import { reserveLocalBudget } from './budget.js';
+import { markLocalBudgetExhausted, reserveLocalBudget } from './budget.js';
 import { readCachedReputation, saveCachedReputation } from './cache.js';
 import { interpretReputation, type ReputationState, type ReputationVerdict } from './interpret.js';
 import { selectForReputation } from './select.js';
@@ -86,6 +86,7 @@ export async function reviewReputation(
         } else {
           verdict = interpretReputation({ status: 'error' });
           unavailable = true;
+          if (report.state === 'rate_limited') await markLocalBudgetExhausted(db, now);
         }
         if (verdict.state !== 'error') await saveCachedReputation(db, url, verdict, now);
       } else if (reservation.state === 'daily_limit') {
