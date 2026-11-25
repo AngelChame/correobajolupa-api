@@ -41,7 +41,7 @@ export type BuildOptions = {
 };
 
 /** Orden fijo de los hallazgos: lo más grave o accionable primero. Una regla sin guía va al final. */
-export const FINDING_ORDER: readonly RuleIdValue[] = ['R8', 'R6', 'R7', 'R2', 'R3', 'R4', 'R5', 'R1'];
+export const FINDING_ORDER: readonly RuleIdValue[] = ['R8', 'R10', 'R6', 'R7', 'R9', 'R2', 'R3', 'R4', 'R5', 'R1'];
 export const MAX_INDICATORS = 25;
 
 const Evidence = z.array(EvidenceItem);

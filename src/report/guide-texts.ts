@@ -7,7 +7,7 @@ import type { AuthResult, LimitedReason, RuleId } from '../contract/schemas/repo
  *
  * Ningún texto lleva enlaces ni direcciones de correo: el informe no debe tener nada clicable (D-017).
  */
-export const GUIDE_VERSION = 'g1-2026.11';
+export const GUIDE_VERSION = 'g2-2026.11';
 
 export type GuideText = {
   readonly title: string;
@@ -145,6 +145,38 @@ export const RULE_GUIDES: Readonly<Record<RuleIdValue, GuideText>> = {
     forAnalyst: [
       'Revisa qué indicador coincidió y quién lo confirmó.',
       'Busca mensajes relacionados a partir de ese indicador y decide con la razón de cada candidato.',
+    ],
+  },
+  R9: {
+    title: 'Una dirección web presenta señales que conviene revisar',
+    whatItMeans: 'La forma de un enlace del correo presenta una o varias señales identificadas por reglas locales.',
+    whyRisky:
+      'Estas características pueden usarse para ocultar el destino o atraer a alguien a una página falsa. También pueden aparecer en enlaces legítimos: por sí solas no demuestran que el sitio sea peligroso.',
+    whatToDo: [
+      'No abras el enlace desde el correo si no esperabas el mensaje.',
+      'Si necesitas usar ese servicio, entra por una dirección que ya conozcas o por un marcador guardado.',
+      'Consulta con tu área de seguridad si el mensaje te pide datos o una acción urgente.',
+    ],
+    forAnalyst: [
+      'Revisa cada señal y su evidencia desactivada; valora el contexto del mensaje.',
+      'Contrasta el destino con otras señales antes de proponer un indicador.',
+      'No visites el enlace desde el entorno de análisis.',
+    ],
+  },
+  R10: {
+    title: 'Una dirección web figura en una lista de reputación',
+    whatItMeans: 'El enlace coincide con una dirección publicada en una lista de sitios reportados; la evidencia indica la fuente y la fecha.',
+    whyRisky:
+      'La aparición en una lista justifica revisarlo con prioridad, pero un reporte de terceros puede equivocarse o quedar desactualizado. La coincidencia por dominio no equivale a una coincidencia exacta de la dirección.',
+    whatToDo: [
+      'No abras el enlace ni compartas datos a través de él.',
+      'Si ya enviaste datos, avisa a tu área de seguridad por un canal conocido.',
+      'Espera a que un analista confirme los siguientes pasos.',
+    ],
+    forAnalyst: [
+      'Comprueba en la evidencia la fuente, la fecha y si la coincidencia fue exacta o solo por dominio.',
+      'Contrasta la señal con el contexto del correo antes de confirmar un indicador.',
+      'Si la lista no está disponible, no interpretes esa falta de datos como una dirección segura.',
     ],
   },
 };

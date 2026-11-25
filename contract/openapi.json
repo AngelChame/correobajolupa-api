@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CorreoBajoLupa API",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Contrato de M0 (cuentas), M1 (reportes y hallazgos) y M2 a M7 (adjuntos, informe, laboratorio IMAP, indicadores, incidentes, cuarentena y auditoría).\nLas rutas de M2 a M7 se declaran antes de implementarse: hasta que llegue su módulo, la API real no las sirve.\nRegla de congelamiento: solo se agregan cosas (endpoints, campos opcionales, valores nuevos avisados); lo que rompa algo sube de versión y se avisa antes.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces.\nTodo lo que salga de un correo y parezca enlace, dominio, IP o dirección se entrega desactivado (`hxxp`, `[.]`, D-017).\nUn ID mal formado o de un recurso que el usuario no puede ver responde 404 `not_found`; un rol insuficiente en una ruta solo de analista o administrador, 403 `forbidden`."
   },
   "servers": [
@@ -4274,9 +4274,11 @@
           "R5",
           "R6",
           "R7",
-          "R8"
+          "R8",
+          "R9",
+          "R10"
         ],
-        "description": "R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado."
+        "description": "R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado; R9 señales en la forma de una URL; R10 URL reportada en una lista de reputación."
       },
       "EvidenceItem": {
         "type": "object",

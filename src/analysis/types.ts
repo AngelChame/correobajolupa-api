@@ -11,7 +11,8 @@ export type EvidenceKind = 'url' | 'domain' | 'email' | 'text';
 export type RawEvidence = { label: string; value: string; kind: EvidenceKind };
 
 export type RawFinding = {
-  ruleId: Exclude<RuleId, 'R8'>;
+  /** R8 es de indicadores; R9 y R10 se activarán en las fases siguientes. */
+  ruleId: Exclude<RuleId, 'R8' | 'R9' | 'R10'>;
   ruleName: string;
   summary: string;
   evidence: RawEvidence[];

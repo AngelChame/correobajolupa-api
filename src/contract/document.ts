@@ -47,7 +47,7 @@ import { ReportDocument } from './schemas/report-document.js';
 import { ActionList, QuarantineRequest, QuarantineResponse, RestoreRequest, RestoreResponse } from './schemas/response.js';
 
 /** Sube con cada cambio del contrato; los cambios que rompen algo se avisan a Cesar. */
-export const CONTRACT_VERSION = '0.3.0';
+export const CONTRACT_VERSION = '0.4.0';
 
 const json = <T extends z.ZodType>(schema: T) => ({ 'application/json': { schema } });
 const error = (description: string) => ({ description, content: json(ErrorResponse) });

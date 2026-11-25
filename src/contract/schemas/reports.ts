@@ -15,11 +15,11 @@ export const Priority = z
   .meta({ id: 'Priority', description: 'Prioridad provisional: los umbrales se calibran con el conjunto de evaluación.' });
 
 export const RuleId = z
-  .enum(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8'])
+  .enum(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10'])
   .meta({
     id: 'RuleId',
     description:
-      'R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado.',
+      'R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado; R9 señales en la forma de una URL; R10 URL reportada en una lista de reputación.',
   });
 
 export const LimitedReason = z.enum(['missing_headers', 'parse_error']).meta({ id: 'LimitedReason' });
