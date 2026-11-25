@@ -5,7 +5,8 @@ import { parseFeed, type FeedName } from './parse.js';
 
 const OPENPHISH = 'https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt';
 const URLHAUS = 'https://urlhaus-api.abuse.ch/v2/files/exports/';
-const MAX_BYTES = 5 * 1024 * 1024;
+// `urls_recent.txt` de URLhaus ronda los 5,3 MB; 5 MiB exactos lo descartarían.
+const MAX_BYTES = 10 * 1024 * 1024;
 const LOCK_KEY = 4_215_002;
 
 export type FeedOptions = {
