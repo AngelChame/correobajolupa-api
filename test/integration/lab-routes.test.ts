@@ -140,11 +140,13 @@ describe('buzones y sincronización', () => {
     const { app: a } = app(mapa);
     const analista = await entrarComo(a, 'analyst', 'analista@ejemplo.invalid');
     const { id } = await buzon('staff');
-    const res = await sync(a, analista, id);
+    const res = await sync(a, analista, id).set('X-Request-Id', 'test-143-imap');
     expect(res.status).toBe(503);
     expect(Object.keys(res.body).sort()).toEqual(['code', 'message', 'requestId']);
     expect(res.body).toMatchObject({ code: 'service_unavailable', message: 'El servidor IMAP del laboratorio no responde. Intenta más tarde.' });
-    expect(JSON.stringify(res.body)).not.toMatch(/@|imap:|143|stack|Error/);
+    expect(res.body.requestId).toBe('test-143-imap');
+    // El requestId es aleatorio y puede contener "143" por casualidad.
+    expect(`${res.body.code} ${res.body.message}`).not.toMatch(/@|imap:|143|stack|Error/);
     expect((await db.mailbox.findUniqueOrThrow({ where: { id } })).lastSyncStatus).toBe('error');
   });
 
