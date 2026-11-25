@@ -56,10 +56,10 @@ describe('migración inicial', () => {
       'indicators',
       'mailboxes',
       'quarantine_actions',
-      'reputation_cache',
-      'reputation_quota',
       'report_links',
       'reports',
+      'reputation_cache',
+      'reputation_quota',
       'sessions',
       'users',
     ]);
