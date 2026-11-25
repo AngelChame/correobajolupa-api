@@ -99,4 +99,27 @@ describe('listas de reputación sin acceso a la red', () => {
     expect(await refreshFeed(db, logger, 'OpenPhish', vi.fn(async () => new Response('# vacío\n')))).toBe(false);
     expect(stored).toEqual(previous);
   });
+
+  it('acepta una lista algo mayor que 5 MiB, como el feed reciente de URLhaus', async () => {
+    const stored: { source: string; urlHash: string; hostHash: string; hasQuery: boolean }[] = [];
+    const state = { source: 'URLhaus', lastGoodAt: null as Date | null, lastErrorAt: null as Date | null };
+    const tx = {
+      $queryRaw: vi.fn(async () => [{ ok: true }]),
+      feedSource: {
+        upsert: vi.fn(async ({ create, update }: { create: typeof state; update: Partial<typeof state> }) => {
+          Object.assign(state, state.lastGoodAt === null && state.lastErrorAt === null ? create : update);
+        }),
+      },
+      feedEntry: {
+        deleteMany: vi.fn(async () => { stored.length = 0; }),
+        createMany: vi.fn(async ({ data }: { data: typeof stored }) => { stored.push(...data); }),
+      },
+    };
+    const db = { $transaction: async (callback: (client: typeof tx) => Promise<boolean>) => callback(tx) } as unknown as Db;
+    const feed = `${'https://sitio.example/ruta-con-id-000000\n'.repeat(150_000)}`;
+    expect(Buffer.byteLength(feed)).toBeGreaterThan(5 * 1024 * 1024);
+    expect(await refreshFeed(db, logger, 'URLhaus', vi.fn(async () => new Response(feed)), 'CLAVE_DE_PRUEBA_URLHAUS_123')).toBe(true);
+    expect(stored).toHaveLength(1);
+    expect(state.lastGoodAt).toBeInstanceOf(Date);
+  }, 20_000);
 });
