@@ -19,7 +19,7 @@ export const GuideFinding = z
   .meta({ id: 'GuideFinding' });
 
 export const ReportNoteKind = z
-  .enum(['limited', 'no_findings', 'failed', 'auth_informative'])
+  .enum(['limited', 'no_findings', 'failed', 'auth_informative', 'feed_unavailable'])
   .meta({
     id: 'ReportNoteKind',
     description: '`no_findings` dice que sin hallazgos no significa seguro. `failed` dice que el análisis no terminó (D-004).',

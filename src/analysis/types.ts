@@ -11,8 +11,8 @@ export type EvidenceKind = 'url' | 'domain' | 'email' | 'text';
 export type RawEvidence = { label: string; value: string; kind: EvidenceKind };
 
 export type RawFinding = {
-  /** R8 es de indicadores; R10 se activará con los feeds. */
-  ruleId: Exclude<RuleId, 'R8' | 'R10'>;
+  /** R8 es de indicadores; R9 y R10 son análisis de URL. */
+  ruleId: Exclude<RuleId, 'R8'>;
   ruleName: string;
   summary: string;
   evidence: RawEvidence[];
@@ -81,6 +81,8 @@ export type AnalysisResult = {
   /** Adjuntos que pasaron del tope y no se registraron (solo el conteo va a los registros). */
   attachmentsIgnored: number;
   findings: RawFinding[];
+  /** Fuentes configuradas sin datos disponibles; se guarda solo el nombre controlado. */
+  feedUnavailable?: ('OpenPhish' | 'URLhaus')[];
   priority: Priority;
   rulesVersion: string;
   /**

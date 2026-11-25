@@ -7,7 +7,7 @@ import type { AuthResult, LimitedReason, RuleId } from '../contract/schemas/repo
  *
  * Ningún texto lleva enlaces ni direcciones de correo: el informe no debe tener nada clicable (D-017).
  */
-export const GUIDE_VERSION = 'g2-2026.11';
+export const GUIDE_VERSION = 'g3-2026.11';
 
 export type GuideText = {
   readonly title: string;
@@ -255,6 +255,10 @@ export const NOTE_TEXTS = {
     title: 'Autenticación del remitente (informativa)',
     text: (spf: string, dkim: string, dmarc: string) =>
       `Resultados que trae el encabezado: SPF ${spf}, DKIM ${dkim}, DMARC ${dmarc}. Se muestran solo como información: en un archivo subido pueden estar alterados y nunca cambian la prioridad.`,
+  },
+  feedUnavailable: {
+    title: 'Lista de reputación no disponible',
+    text: 'Una lista de reputación configurada no respondió o aún no tiene datos válidos. No aparecer en los resultados no significa que el enlace sea seguro.',
   },
 } as const;
 

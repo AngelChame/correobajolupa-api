@@ -60,10 +60,11 @@ export type NotesInput = {
   limitedReason: z.infer<typeof LimitedReason> | null;
   findingsCount: number;
   authentication: Authentication | null;
+  feedUnavailable?: readonly string[];
 };
 
 /** Notas en orden fijo: failed, limited, no_findings, auth_informative. */
-export function buildNotes({ status, limitedReason, findingsCount, authentication }: NotesInput): Note[] {
+export function buildNotes({ status, limitedReason, findingsCount, authentication, feedUnavailable = [] }: NotesInput): Note[] {
   const notas: Note[] = [];
   if (status === 'failed') notas.push({ kind: 'failed', ...NOTE_TEXTS.failed });
   if (status === 'limited') {
@@ -77,6 +78,9 @@ export function buildNotes({ status, limitedReason, findingsCount, authenticatio
       title: NOTE_TEXTS.authInformative.title,
       text: NOTE_TEXTS.authInformative.text(AUTH_RESULT_TEXT[authentication.spf], AUTH_RESULT_TEXT[authentication.dkim], AUTH_RESULT_TEXT[authentication.dmarc]),
     });
+  }
+  if (status !== 'failed' && feedUnavailable.length > 0) {
+    notas.push({ kind: 'feed_unavailable', ...NOTE_TEXTS.feedUnavailable });
   }
   return notas;
 }

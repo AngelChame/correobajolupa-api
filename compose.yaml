@@ -126,6 +126,9 @@ services:
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-}
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-}
       CLEANUP_INTERVAL_MIN: ${CLEANUP_INTERVAL_MIN:-}
+      OPENPHISH_FEED_ENABLED: ${OPENPHISH_FEED_ENABLED:-false}
+      URLHAUS_AUTH_KEY: ${URLHAUS_AUTH_KEY:-}
+      FEED_REFRESH_HOURS: ${FEED_REFRESH_HOURS:-}
       # M2: ClamAV por la red clamav-net. Vacíos = valores por defecto de src/config.ts.
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"

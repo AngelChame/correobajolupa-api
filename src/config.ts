@@ -106,6 +106,10 @@ const Env = z
     // Cada cuántos minutos el worker borra reportes vencidos (7 días), sesiones vencidas y
     // carpetas huérfanas (D-012, D-034, D-038). Entre 1 minuto y 24 horas.
     CLEANUP_INTERVAL_MIN: enteroEntre(1, 1440, 60),
+    // Fuentes externas opcionales; sin configuración el modo real sigue funcionando sin red.
+    OPENPHISH_FEED_ENABLED: z.stringbool().default(false),
+    URLHAUS_AUTH_KEY: opcional(z.string().regex(/^[A-Za-z0-9._-]{8,256}$/)),
+    FEED_REFRESH_HOURS: enteroEntre(12, 72, 12),
 
     // --- M2: ClamAV (solo el worker lo usa). clamd por TCP dentro de la red de Docker. ---
     CLAMAV_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('clamav')),

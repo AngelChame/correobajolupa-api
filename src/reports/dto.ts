@@ -47,6 +47,7 @@ export const DETAIL_SELECT = {
   analyzedAt: true,
   hasHtml: true,
   authentication: true,
+  feedUnavailable: true,
   links: { select: { displayText: true, defangedUrl: true, domain: true }, orderBy: { position: 'asc' } },
   _count: { select: { findings: true } },
 } as const;

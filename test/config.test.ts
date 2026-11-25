@@ -13,6 +13,18 @@ function mensajeDeError(env: NodeJS.ProcessEnv): string {
 }
 
 describe('loadConfig', () => {
+  it('los feeds están apagados sin configuración y una clave inválida no se imprime', () => {
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA })).toMatchObject({
+      OPENPHISH_FEED_ENABLED: false,
+      FEED_REFRESH_HOURS: 12,
+    });
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA }).URLHAUS_AUTH_KEY).toBeUndefined();
+    const value = 'MARCADOR_CLAVE_INCORRECTA?';
+    const message = mensajeDeError({ DATABASE_URL: URL_VALIDA, URLHAUS_AUTH_KEY: value });
+    expect(message).toContain('URLHAUS_AUTH_KEY');
+    expect(message).not.toContain(value);
+  });
+
   it('acepta una DATABASE_URL de PostgreSQL y aplica los valores por defecto', () => {
     const config = loadConfig({ DATABASE_URL: URL_VALIDA });
     expect(config.DATABASE_URL).toBe(URL_VALIDA);

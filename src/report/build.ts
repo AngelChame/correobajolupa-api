@@ -29,6 +29,7 @@ export type ReportInput = {
   /** Remitente tal como lo guardó el analizador (crudo); sale solo desactivado. */
   fromAddress: string | null;
   authentication: Authentication | null;
+  feedUnavailable?: unknown;
   findings: readonly { id: string; ruleId: string; evidence: unknown; createdAt: Date }[];
   /** Dominio (o IP) crudo de cada enlace; sale solo desactivado. */
   links: readonly { position: number; domain: string | null }[];
@@ -132,6 +133,9 @@ export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones:
       limitedReason: entrada.limitedReason,
       findingsCount: findings.length,
       authentication: entrada.authentication,
+      feedUnavailable: Array.isArray(entrada.feedUnavailable)
+        ? entrada.feedUnavailable.filter((s) => s === 'OpenPhish' || s === 'URLhaus')
+        : [],
     }),
   };
 }

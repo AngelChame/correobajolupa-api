@@ -191,6 +191,8 @@ model Report {
   hasHtml        Boolean        @default(false) @map("has_html")
   /// SPF, DKIM y DMARC como información (D-016): { spf, dkim, dmarc }. Nunca suman puntaje.
   authentication Json?
+  /// Fuentes configuradas pero no disponibles al analizar; solo nombres controlados.
+  feedUnavailable Json?          @map("feed_unavailable")
   /// Clave que devuelve el almacenamiento (carpeta del reporte / nombre aleatorio). Nunca una ruta ni el nombre del adjunto.
   storageKey     String         @map("storage_key") @db.VarChar(128)
   sizeBytes      Int            @map("size_bytes")
@@ -255,6 +257,30 @@ model ReportLink {
 
   @@unique([reportId, position])
   @@map("report_links")
+}
+
+/// Estado de la última descarga válida. El feed se consulta localmente durante el análisis.
+model FeedSource {
+  source       String      @id @db.VarChar(20)
+  lastGoodAt   DateTime?   @map("last_good_at") @db.Timestamptz(3)
+  lastErrorAt  DateTime?   @map("last_error_at") @db.Timestamptz(3)
+  entries      FeedEntry[]
+
+  @@map("feed_sources")
+}
+
+/// Solo hashes de URL normalizada y host: no se copian URLs de terceros a respuestas o registros.
+model FeedEntry {
+  source   String     @db.VarChar(20)
+  feed     FeedSource @relation(fields: [source], references: [source], onDelete: Cascade)
+  urlHash  String     @map("url_hash") @db.Char(64)
+  hostHash String     @map("host_hash") @db.Char(64)
+  /// Si el feed tenía query, la normalización M5 no permite afirmar coincidencia exacta.
+  hasQuery Boolean     @default(false) @map("has_query")
+
+  @@id([source, urlHash])
+  @@index([hostHash])
+  @@map("feed_entries")
 }
 
 /// Adjunto de un reporte (M2). Solo metadatos: los bytes NO se guardan en ningún lado; el worker

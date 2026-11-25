@@ -28,6 +28,8 @@ function todosLosTextos(): string[] {
     NOTE_TEXTS.noFindings.text,
     NOTE_TEXTS.authInformative.title,
     NOTE_TEXTS.authInformative.text('aprobado', 'falló', 'sin registro'),
+    NOTE_TEXTS.feedUnavailable.title,
+    NOTE_TEXTS.feedUnavailable.text,
   ];
   return [...deGuias, ...Object.values(HEADLINES), ...frases, ...notas, ...Object.values(AUTH_RESULT_TEXT)];
 }
@@ -71,6 +73,6 @@ describe('textos de la guía', () => {
   });
 
   it('versión de la guía', () => {
-    expect(GUIDE_VERSION).toBe('g2-2026.11');
+    expect(GUIDE_VERSION).toBe('g3-2026.11');
   });
 });

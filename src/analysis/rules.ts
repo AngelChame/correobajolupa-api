@@ -7,14 +7,14 @@ import { evaluarSenalesUrl, suficientesSenales } from './url-signals.js';
 import type { AnalyzedAttachment, AnalyzedLink, RawEvidence, RawFinding } from './types.js';
 
 /** Versión de las reglas: se guarda en cada hallazgo y en el reporte. Sube al cambiar una regla. */
-export const RULES_VERSION = 'm9-2026.11';
+export const RULES_VERSION = 'm9f-2026.11';
 
 /** Evidencias por hallazgo como mucho (un correo con 200 enlaces malos no genera 200). */
 const MAX_EVIDENCE = 10;
 
-type RuleId = RawFinding['ruleId'];
+type RuleId = Exclude<RawFinding['ruleId'], 'R10'>;
 
-const RULES: Record<RuleId, { name: string; summary: string; weight: number }> = {
+const RULES: Record<RawFinding['ruleId'], { name: string; summary: string; weight: number }> = {
   R1: {
     name: 'Reply-To distinto del remitente',
     summary: 'Las respuestas irían a un dominio distinto del que aparece como remitente.',
@@ -54,6 +54,11 @@ const RULES: Record<RuleId, { name: string; summary: string; weight: number }> =
   R9: {
     name: 'Señales en la dirección de un enlace',
     summary: 'La forma de una dirección web presenta señales que conviene revisar; ninguna demuestra peligro por sí sola.',
+    weight: 2,
+  },
+  R10: {
+    name: 'Enlace reportado por una lista de reputación',
+    summary: 'Una fuente externa reportó este enlace; la coincidencia y la fecha se muestran como evidencia, no como prueba definitiva.',
     weight: 2,
   },
 };
@@ -207,7 +212,7 @@ export function applyRules({ fromAddress, replyTo, links, attachments = [], inst
     add('R7', ...items);
   }
 
-  const findings = (Object.keys(RULES) as RuleId[])
+  const findings = (Object.keys(evidence) as RuleId[])
     .filter((id) => evidence[id].length > 0)
     .map((id) => ({ ruleId: id, ruleName: RULES[id].name, summary: RULES[id].summary, evidence: evidence[id] }));
   const urlFinding = findUrlFinding(links, institutionalDomains);

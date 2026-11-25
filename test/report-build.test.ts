@@ -39,6 +39,16 @@ function entrada(extra: Partial<ReportInput> = {}): ReportInput {
 }
 
 describe('buildReportDocument', () => {
+  it('un feed caído añade una nota sin cambiar completed ni afirmar que el enlace está limpio', () => {
+    const doc = buildReportDocument(entrada({
+      status: 'completed', findings: [], feedUnavailable: ['OpenPhish'], priority: 'low',
+    }), AHORA);
+    expect(ReportDocument.parse(doc)).toEqual(doc);
+    expect(doc.status).toBe('completed');
+    expect(doc.notes.map((note) => note.kind)).toContain('feed_unavailable');
+    expect(doc.notes.find((note) => note.kind === 'feed_unavailable')?.text).toBe(NOTE_TEXTS.feedUnavailable.text);
+  });
+
   it('cumple el contrato ReportDocument y lleva la versión de la guía', () => {
     const doc = buildReportDocument(entrada(), AHORA);
     expect(ReportDocument.parse(doc)).toEqual(doc);

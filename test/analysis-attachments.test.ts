@@ -192,6 +192,6 @@ describe('regla R7', () => {
     const r = await analyze(correoConAdjuntos([{ name: 'factura.pdf.exe', type: 'application/octet-stream', content: PE }]), 'eml', INST);
     expect(r.findings.map((f) => f.ruleId)).toEqual(['R7']);
     expect(r.priority).toBe('medium');
-    expect(r.rulesVersion).toBe('m9-2026.11');
+    expect(r.rulesVersion).toBe('m9f-2026.11');
   });
 });

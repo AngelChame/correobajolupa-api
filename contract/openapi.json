@@ -4606,7 +4606,8 @@
           "limited",
           "no_findings",
           "failed",
-          "auth_informative"
+          "auth_informative",
+          "feed_unavailable"
         ],
         "description": "`no_findings` dice que sin hallazgos no significa seguro. `failed` dice que el análisis no terminó (D-004)."
       },

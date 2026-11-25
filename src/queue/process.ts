@@ -5,7 +5,8 @@ import { scanAttachments, type AttachmentScan, type ScanFn, type ScanSettings } 
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
-import { domainSuffixes } from '../indicators/exclusions.js';
+import { lookupFeeds } from '../feeds/lookup.js';
+import type { FeedName } from '../feeds/parse.js';
 import type { ReportStorage } from '../storage/storage.js';
 
 /**
@@ -30,6 +31,7 @@ export type QueueDeps = {
   scan: ScanSettings;
   /** Solo para pruebas: reemplaza al cliente de ClamAV. */
   scanFn?: ScanFn;
+  enabledFeeds?: readonly FeedName[];
 };
 
 export type Outcome = 'idle' | 'done' | 'retry' | 'failed' | 'discarded';
@@ -91,6 +93,7 @@ async function save(db: Db, job: Job, result: AnalysisResult, scans: readonly At
         rulesVersion: result.rulesVersion,
         hasHtml: result.hasHtml,
         authentication: result.authentication ?? Prisma.DbNull,
+        feedUnavailable: result.feedUnavailable?.length ? result.feedUnavailable : Prisma.DbNull,
         analyzedAt: new Date(),
         lockedUntil: null,
         lastErrorCode: null,
@@ -200,23 +203,30 @@ export async function processNext(deps: QueueDeps): Promise<Outcome> {
     return release(db, job, code, maxAttempts);
   }
 
-  // La lista manual de exclusión (M5) también se respeta en R9. Solo se buscan los sufijos de
-  // hosts ya extraídos, mediante el índice de exclusions; nunca se consulta ninguna URL del correo.
-  if (result.findings.some((f) => f.ruleId === 'R9')) {
-    const suffixes = [...new Set(result.links.flatMap((l) => l.domain ? domainSuffixes(l.domain) : []))];
-    const excluded = suffixes.length
-      ? await db.exclusion.findMany({ where: { domain: { in: suffixes } }, select: { domain: true } })
-      : [];
-    const others = result.findings.filter((f) => f.ruleId !== 'R9');
-    const url = findUrlFinding(result.links, deps.institutionalDomains, excluded.map((e) => e.domain));
-    result.findings = url ? [...others, url] : others;
-    result.priority = priorityOf(result.findings);
+  let exactFeedMatch = false;
+  if (result.findings.some((f) => f.ruleId === 'R9') || (deps.enabledFeeds?.length ?? 0) > 0) {
+    try {
+      const feed = await lookupFeeds(db, result.links, deps.institutionalDomains, deps.enabledFeeds ?? []);
+      const others = result.findings.filter((f) => f.ruleId !== 'R9');
+      const url = findUrlFinding(result.links, deps.institutionalDomains, feed.excludedDomains);
+      result.findings = [...others, ...(url ? [url] : []), ...(feed.finding ? [feed.finding] : [])];
+      result.feedUnavailable = feed.unavailable;
+      exactFeedMatch = feed.exact;
+      result.priority = priorityOf(result.findings);
+    } catch {
+      // Un error del feed no impide terminar el reporte. Sin exclusiones disponibles no se
+      // emite R9, para evitar falsas alarmas con dominios excluidos manualmente.
+      result.findings = result.findings.filter((f) => f.ruleId !== 'R9');
+      result.feedUnavailable = [...(deps.enabledFeeds ?? [])];
+      result.priority = priorityOf(result.findings);
+      log.warn({ errorCode: 'feed_lookup_unavailable' }, 'reputación no disponible');
+    }
   }
 
   // ClamAV (M2). Nunca lanza: un fallo deja el adjunto en error y el reporte sigue (P-05).
   const scans = await scanAttachments(result.attachments, deps.scan, deps.scanFn);
   // Una firma de antivirus es la señal más fuerte que hay: el reporte sube a prioridad alta.
-  const priority = scans.some((s) => s.scanStatus === 'detected') ? 'high' : result.priority;
+  const priority = scans.some((s) => s.scanStatus === 'detected') || exactFeedMatch ? 'high' : result.priority;
 
   const saved = await save(db, job, result, scans, priority);
   if (!saved) {
