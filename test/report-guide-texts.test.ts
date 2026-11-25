@@ -28,12 +28,14 @@ function todosLosTextos(): string[] {
     NOTE_TEXTS.noFindings.text,
     NOTE_TEXTS.authInformative.title,
     NOTE_TEXTS.authInformative.text('aprobado', 'falló', 'sin registro'),
+    NOTE_TEXTS.feedUnavailable.title,
+    NOTE_TEXTS.feedUnavailable.text,
   ];
   return [...deGuias, ...Object.values(HEADLINES), ...frases, ...notas, ...Object.values(AUTH_RESULT_TEXT)];
 }
 
 describe('textos de la guía', () => {
-  it('cada regla del contrato (R1 a R8) tiene su guía completa', () => {
+  it('cada regla del contrato (R1 a R10) tiene su guía completa', () => {
     expect(Object.keys(RULE_GUIDES).sort()).toEqual([...RuleId.options].sort());
     for (const [id, g] of guias) {
       for (const campo of [g.title, g.whatItMeans, g.whyRisky]) expect(campo.trim(), id).not.toBe('');
@@ -71,6 +73,6 @@ describe('textos de la guía', () => {
   });
 
   it('versión de la guía', () => {
-    expect(GUIDE_VERSION).toBe('g1-2026.11');
+    expect(GUIDE_VERSION).toBe('g4-2026.11');
   });
 });

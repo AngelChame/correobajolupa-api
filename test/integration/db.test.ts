@@ -43,6 +43,8 @@ describe('migración inicial', () => {
       'attachments',
       'audit_events',
       'exclusions',
+      'feed_entries',
+      'feed_sources',
       'findings',
       'incident_comments',
       'incident_indicators',
@@ -56,6 +58,8 @@ describe('migración inicial', () => {
       'quarantine_actions',
       'report_links',
       'reports',
+      'reputation_cache',
+      'reputation_quota',
       'sessions',
       'users',
     ]);

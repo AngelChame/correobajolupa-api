@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { AuthResult } from '../contract/schemas/reports.js';
 import type { LimitedReason, Priority, ReportSource, RuleId } from '../generated/prisma/enums.js';
+import type { ReputationReview } from '../reputation/run.js';
 
 /**
  * Tipo de valor de una evidencia. El analizador la devuelve cruda; al guardarla en la base, las
@@ -11,6 +12,7 @@ export type EvidenceKind = 'url' | 'domain' | 'email' | 'text';
 export type RawEvidence = { label: string; value: string; kind: EvidenceKind };
 
 export type RawFinding = {
+  /** R8 es de indicadores; R9 y R10 son análisis de URL. */
   ruleId: Exclude<RuleId, 'R8'>;
   ruleName: string;
   summary: string;
@@ -80,6 +82,9 @@ export type AnalysisResult = {
   /** Adjuntos que pasaron del tope y no se registraron (solo el conteo va a los registros). */
   attachmentsIgnored: number;
   findings: RawFinding[];
+  /** Fuentes configuradas sin datos disponibles; se guarda solo el nombre controlado. */
+  feedUnavailable?: ('OpenPhish' | 'URLhaus')[];
+  reputation?: ReputationReview;
   priority: Priority;
   rulesVersion: string;
   /**

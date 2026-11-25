@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CorreoBajoLupa API",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Contrato de M0 (cuentas), M1 (reportes y hallazgos) y M2 a M7 (adjuntos, informe, laboratorio IMAP, indicadores, incidentes, cuarentena y auditoría).\nLas rutas de M2 a M7 se declaran antes de implementarse: hasta que llegue su módulo, la API real no las sirve.\nRegla de congelamiento: solo se agregan cosas (endpoints, campos opcionales, valores nuevos avisados); lo que rompa algo sube de versión y se avisa antes.\n\nConvenciones: rutas, campos y valores en inglés (camelCase / snake_case); textos para personas en español.\nAutenticación por cookie de sesión `cbl_session`; las peticiones que modifican datos llevan la cabecera `X-CSRF-Token`.\nEl análisis es asíncrono: subir o pegar devuelve 202 y el estado se consulta con `GET /reports/{reportId}`.\nTodo texto de correo es contenido hostil: el front siempre lo escapa. Nunca se visitan los enlaces.\nTodo lo que salga de un correo y parezca enlace, dominio, IP o dirección se entrega desactivado (`hxxp`, `[.]`, D-017).\nUn ID mal formado o de un recurso que el usuario no puede ver responde 404 `not_found`; un rol insuficiente en una ruta solo de analista o administrador, 403 `forbidden`."
   },
   "servers": [
@@ -4147,6 +4147,9 @@
               }
             ],
             "description": "Solo informativo; nunca suma puntaje (D-016). Puede estar alterado en un `.eml` subido."
+          },
+          "reputation": {
+            "$ref": "#/components/schemas/ReputationReview"
           }
         },
         "required": [
@@ -4164,7 +4167,8 @@
           "analyzedAt",
           "links",
           "hasHtml",
-          "authentication"
+          "authentication",
+          "reputation"
         ],
         "additionalProperties": false
       },
@@ -4203,6 +4207,93 @@
           "domain"
         ],
         "additionalProperties": false
+      },
+      "ReputationReview": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_configured",
+              "checked",
+              "unavailable"
+            ]
+          },
+          "items": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "displayUrl": {
+                  "type": "string",
+                  "description": "URL desactivada: nunca clicable."
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "reported",
+                    "suspicious",
+                    "no_detections",
+                    "no_data",
+                    "error",
+                    "not_checked"
+                  ]
+                },
+                "malicious": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "total": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "analyzedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "displayUrl",
+                "state",
+                "malicious",
+                "total",
+                "analyzedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "status",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "Solo informa sobre reputación existente; sin datos o fallo no significa seguro."
       },
       "FindingList": {
         "type": "object",
@@ -4274,9 +4365,11 @@
           "R5",
           "R6",
           "R7",
-          "R8"
+          "R8",
+          "R9",
+          "R10"
         ],
-        "description": "R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado."
+        "description": "R1 Reply-To distinto; R2 texto del enlace distinto del destino; R3 dominio parecido a uno institucional; R4 dominio internacionalizado; R5 destino como IP; R6 esquema de URL no permitido; R7 doble extensión o tipo de adjunto inconsistente; R8 indicador confirmado; R9 señales en la forma de una URL; R10 URL reportada en una lista de reputación."
       },
       "EvidenceItem": {
         "type": "object",
@@ -4462,6 +4555,9 @@
               "$ref": "#/components/schemas/GuideFinding"
             }
           },
+          "reputation": {
+            "$ref": "#/components/schemas/ReputationReview"
+          },
           "indicators": {
             "type": "array",
             "items": {
@@ -4545,6 +4641,7 @@
           "priority",
           "summary",
           "findings",
+          "reputation",
           "indicators",
           "attachments",
           "notes"
@@ -4604,7 +4701,9 @@
           "limited",
           "no_findings",
           "failed",
-          "auth_informative"
+          "auth_informative",
+          "feed_unavailable",
+          "reputation_unavailable"
         ],
         "description": "`no_findings` dice que sin hallazgos no significa seguro. `failed` dice que el análisis no terminó (D-004)."
       },

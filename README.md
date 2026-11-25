@@ -2,7 +2,7 @@
 
 Backend, trabajador de análisis, infraestructura (Docker Compose, servidor IMAP de laboratorio) y contrato OpenAPI de **CorreoBajoLupa**: una plataforma web con API REST que analiza correos sospechosos con reglas explicables, relaciona mensajes de una misma campaña y entrega un informe con guía de mitigación. En un laboratorio IMAP controlado permite buscar mensajes relacionados y ponerlos en cuarentena de forma autorizada y reversible.
 
-> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) M3 (informe con guía de mitigación), M4 (laboratorio IMAP: Dovecot, 21 mensajes sintéticos, sincronización y entrega simulada), M5 (indicadores y candidatos), M6 (incidentes) y M7 (cuarentena, restauración y consulta de la auditoría) hechos. Contrato OpenAPI 0.3.0. Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
+> **Estado:** en desarrollo. M0 (cimientos: cuentas, usuarios, cabeceras y límites), M1 (entrada y análisis: subir o pegar un correo, worker con reglas R1 a R6, visor saneado y limpieza programada), M2 (adjuntos: SHA-256, ClamAV y regla R7) M3 (informe con guía de mitigación), M4 (laboratorio IMAP: Dovecot, 21 mensajes sintéticos, sincronización y entrega simulada), M5 (indicadores y candidatos), M6 (incidentes) y M7 (cuarentena, restauración y consulta de la auditoría) hechos. En `m9-analisis-url`: R9 y R10 con feeds opcionales. Contrato OpenAPI 0.4.0. Proyecto académico de Seguridad Informática (Universidad Politécnica de Chiapas).
 
 ## Datos y seguridad
 
@@ -95,8 +95,22 @@ curl -s -b cookies.txt -X POST -H "X-CSRF-Token: <csrfToken>" http://127.0.0.1:3
 - Un reporte ajeno o un id que no es UUID responde 404, no 403. Cuota por cuenta: `REPORTS_PER_USER_PER_HOUR`.
 - El archivo se guarda tal cual en el volumen `reports-data` (una carpeta por reporte, nombre aleatorio; D-038) con su SHA-256.
 - **Worker** (`node dist/worker.js`, servicio `worker`): la cola es la propia tabla `reports` (D-054). Toma trabajos con `FOR UPDATE SKIP LOCKED` y un arriendo de `JOB_LEASE_SECONDS`; si un worker muere, otro retoma el reporte. Reintenta hasta `JOB_MAX_ATTEMPTS` y después lo deja `failed`.
-- **Reglas** R1 a R7 (versión `m2-2026.11`) con evidencia; SPF, DKIM y DMARC solo informativos (D-016). R8 (indicadores confirmados) llega al final.
+- **Reglas** R1 a R7, R9 (forma de la URL) y R10 (lista de reputación), versión `m9f-2026.11`. R8 es para indicadores confirmados; SPF, DKIM y DMARC solo informativos (D-016).
 - Nunca se visitan los enlaces y en las respuestas salen desactivados (`hxxp://dominio[.]com`, D-017). Los registros no llevan asuntos, remitentes ni contenido.
+
+### Análisis de URL (R9 y R10)
+
+R9 busca características explicables de la dirección sin visitarla. Una señal fuerte o dos débiles independientes (incluida una estructural) generan un hallazgo; una sola palabra o una URL sin cifrar **no prueban** que sea peligrosa. Los dominios institucionales y las exclusiones manuales no disparan R9.
+
+R10 compara **hashes** de las URL normalizadas de M5 contra una tabla local: nunca consulta el enlace que llegó en el correo. La evidencia indica fuente, fecha y tipo de coincidencia. Solo una coincidencia exacta comprobada puede elevar la prioridad a alta; compartir dominio o coincidir solo después de quitar parámetros es una señal de prioridad media. URLhaus registra sitios de **distribución de malware**, no debe describirse como lista de phishing. Que no haya coincidencia **no significa seguro**. Si un feed configurado falla, el reporte se completa y el informe añade la nota «Lista de reputación no disponible».
+
+Los feeds externos están **apagados por defecto**. `OPENPHISH_FEED_ENABLED=true` habilita la lista comunitaria de OpenPhish; `URLHAUS_AUTH_KEY` habilita URLhaus con una clave propia; `FEED_REFRESH_HOURS` vale 12 si se deja vacío. Solo el worker descarga desde direcciones fijas, con límite de tiempo/tamaño y actualización transaccional: si falla una descarga conserva el último snapshot. La clave queda únicamente en `.env` y nunca se registra. No se necesitan claves para las pruebas: se usan respuestas sintéticas.
+
+La capa optativa de VirusTotal incluye interpretación prudente de conteos, selección de hasta cinco URL normalizadas, caché por hash de 24 horas y presupuesto compartido (16 segundos entre reservas y 500 al día UTC; un 429 detiene nuevas consultas hasta el día UTC siguiente). El cliente **solo lee informes existentes** (`GET /api/v3/urls/{id}`, identificador base64url), con dirección fija, límite de tiempo/tamaño y sin redirecciones. `VIRUSTOTAL_API_KEY` es opcional y se transmite solo al worker; vacía no habilita nada. El worker consulta como máximo **una URL nueva por reporte** para no esperar la cuota dentro del análisis; las demás pueden salir de caché o quedar «no consultadas». El detalle y el informe muestran el estado por URL y una nota si la fuente falla. Las pruebas usan respuestas inventadas, sin clave ni tráfico real.
+
+**Privacidad del modo real pendiente de activar:** una futura consulta enviaría a VirusTotal la URL normalizada (sin parámetros ni fragmentos), que aún puede contener información sensible en la ruta. Antes de habilitarla en una demo se requiere aviso de privacidad y revisión de esa transmisión; no se enviarán asunto, cuerpo, direcciones de correo ni nombres de archivo. La API pública se contempla únicamente para el uso académico y no comercial previsto en el plan.
+
+**Permisos de uso:** OpenPhish Community Feed permite investigación personal o académica pero restringe la redistribución y exige capacidad legal; antes de activarlo en una demo pública se deben revisar sus [términos](https://www.openphish.com/terms.html) y obtener la autorización correspondiente. URLhaus requiere cuenta/clave y [uso razonable no comercial](https://abuse.ch/terms-of-use/). Fuente: [OpenPhish](https://www.openphish.com/phishing_feeds.html) y [URLhaus](https://urlhaus.abuse.ch/api/). Ningún feed se activa automáticamente al desplegar.
 
 ## Adjuntos y ClamAV (M2)
 

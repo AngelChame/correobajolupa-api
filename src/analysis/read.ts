@@ -25,7 +25,8 @@ export function prepareInput(bytes: Uint8Array, source: ReportSource): PreparedI
   let missingHeaders = false;
   if (source === 'paste') {
     const firstLine = input.subarray(0, 1000).toString('utf8').split(/\r?\n/).find((l) => l.trim() !== '') ?? '';
-    if (!HEADER_LINE.test(firstLine)) {
+    // Una URL al comienzo (`https:`/`http:`) no es un encabezado del mensaje.
+    if (!HEADER_LINE.test(firstLine) || /^https?:\/\//i.test(firstLine)) {
       // Sin encabezados: todo es cuerpo. La línea vacía inicial evita que mailparser tome la
       // primera línea ("Estimado usuario:") como un encabezado.
       missingHeaders = true;

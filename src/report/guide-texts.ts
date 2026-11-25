@@ -7,7 +7,7 @@ import type { AuthResult, LimitedReason, RuleId } from '../contract/schemas/repo
  *
  * Ningún texto lleva enlaces ni direcciones de correo: el informe no debe tener nada clicable (D-017).
  */
-export const GUIDE_VERSION = 'g1-2026.11';
+export const GUIDE_VERSION = 'g4-2026.11';
 
 export type GuideText = {
   readonly title: string;
@@ -147,6 +147,38 @@ export const RULE_GUIDES: Readonly<Record<RuleIdValue, GuideText>> = {
       'Busca mensajes relacionados a partir de ese indicador y decide con la razón de cada candidato.',
     ],
   },
+  R9: {
+    title: 'Una dirección web presenta señales que conviene revisar',
+    whatItMeans: 'La forma de un enlace del correo presenta una o varias señales identificadas por reglas locales.',
+    whyRisky:
+      'Estas características pueden usarse para ocultar el destino o atraer a alguien a una página falsa. También pueden aparecer en enlaces legítimos: por sí solas no demuestran que el sitio sea peligroso.',
+    whatToDo: [
+      'No abras el enlace desde el correo si no esperabas el mensaje.',
+      'Si necesitas usar ese servicio, entra por una dirección que ya conozcas o por un marcador guardado.',
+      'Consulta con tu área de seguridad si el mensaje te pide datos o una acción urgente.',
+    ],
+    forAnalyst: [
+      'Revisa cada señal y su evidencia desactivada; valora el contexto del mensaje.',
+      'Contrasta el destino con otras señales antes de proponer un indicador.',
+      'No visites el enlace desde el entorno de análisis.',
+    ],
+  },
+  R10: {
+    title: 'Una dirección web figura en una lista de reputación',
+    whatItMeans: 'Una fuente de reputación informó una coincidencia o motores marcaron el enlace; la evidencia indica la fuente y el alcance de la comparación.',
+    whyRisky:
+      'Una lista o un informe de terceros puede equivocarse o quedar desactualizado. Un dominio compartido o una URL sin parámetros no equivalen a una coincidencia exacta.',
+    whatToDo: [
+      'No abras el enlace ni compartas datos a través de él.',
+      'Si ya enviaste datos, avisa a tu área de seguridad por un canal conocido.',
+      'Espera a que un analista confirme los siguientes pasos.',
+    ],
+    forAnalyst: [
+      'Comprueba la fuente, la fecha disponible, el conteo de motores y si la coincidencia fue exacta, sin parámetros o solo por dominio.',
+      'Contrasta la señal con el contexto del correo antes de confirmar un indicador.',
+      'Si la lista no está disponible, no interpretes esa falta de datos como una dirección segura.',
+    ],
+  },
 };
 
 /** Texto para una regla que esta guía todavía no explica: el informe no se cae por eso. */
@@ -223,6 +255,14 @@ export const NOTE_TEXTS = {
     title: 'Autenticación del remitente (informativa)',
     text: (spf: string, dkim: string, dmarc: string) =>
       `Resultados que trae el encabezado: SPF ${spf}, DKIM ${dkim}, DMARC ${dmarc}. Se muestran solo como información: en un archivo subido pueden estar alterados y nunca cambian la prioridad.`,
+  },
+  feedUnavailable: {
+    title: 'Lista de reputación no disponible',
+    text: 'Una lista de reputación configurada no respondió o aún no tiene datos válidos. No aparecer en los resultados no significa que el enlace sea seguro.',
+  },
+  reputationUnavailable: {
+    title: 'Consulta de reputación no disponible',
+    text: 'La consulta externa falló o se agotó su cuota. Las reglas locales siguen funcionando; no consultar un enlace no significa que sea seguro.',
   },
 } as const;
 

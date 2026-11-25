@@ -6,6 +6,7 @@ import { CONTRACT_PATH, render } from '../src/contract/generate.js';
 import { buildDocument } from '../src/contract/document.js';
 import { UpdateIncidentBody } from '../src/contract/schemas/incidents.js';
 import { CreateExclusionBody, ProposeIndicatorBody } from '../src/contract/schemas/indicators.js';
+import { RuleId } from '../src/contract/schemas/reports.js';
 
 type Operation = {
   operationId?: string;
@@ -20,6 +21,17 @@ const operations = Object.entries(doc.paths).flatMap(([path, item]) =>
 );
 
 describe('contrato OpenAPI (D-033)', () => {
+  it('declara la versión 0.4.0 y las reglas nuevas R9 y R10', () => {
+    const versionado = JSON.parse(readFileSync(CONTRACT_PATH, 'utf8')) as {
+      info: { version: string };
+      components: { schemas: { RuleId: { enum: string[] } } };
+    };
+    expect(versionado.info.version).toBe('0.4.0');
+    expect(versionado.components.schemas.RuleId.enum).toEqual([...RuleId.options]);
+    expect(RuleId.options).toContain('R9');
+    expect(RuleId.options).toContain('R10');
+  });
+
   it('el archivo commiteado coincide con el generado desde los esquemas Zod', () => {
     const commiteado = readFileSync(CONTRACT_PATH, 'utf8');
     expect(commiteado, 'Ejecuta `npm run contract:generate` y commitea contract/openapi.json').toBe(render());

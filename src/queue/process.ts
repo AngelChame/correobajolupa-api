@@ -1,9 +1,13 @@
 import type { Logger } from 'pino';
 import { analyze, defangEmail, defangHost, defangUrlValue, type AnalysisResult, type RawEvidence } from '../analysis/index.js';
+import { findUrlFinding, priorityOf } from '../analysis/rules.js';
 import { scanAttachments, type AttachmentScan, type ScanFn, type ScanSettings } from '../clamav/scan.js';
 import type { Db } from '../db/client.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { ReportSource } from '../generated/prisma/enums.js';
+import { lookupFeeds } from '../feeds/lookup.js';
+import type { FeedName } from '../feeds/parse.js';
+import { reputationFinding, reviewReputation } from '../reputation/run.js';
 import type { ReportStorage } from '../storage/storage.js';
 
 /**
@@ -28,6 +32,11 @@ export type QueueDeps = {
   scan: ScanSettings;
   /** Solo para pruebas: reemplaza al cliente de ClamAV. */
   scanFn?: ScanFn;
+  enabledFeeds?: readonly FeedName[];
+  /** Vacía: no se usa la red ni se reserva presupuesto. */
+  virusTotalApiKey?: string;
+  /** Pruebas sintéticas: reemplaza la llamada HTTP, nunca usa la fuente real. */
+  reputationFetchFn?: typeof fetch;
 };
 
 export type Outcome = 'idle' | 'done' | 'retry' | 'failed' | 'discarded';
@@ -89,6 +98,8 @@ async function save(db: Db, job: Job, result: AnalysisResult, scans: readonly At
         rulesVersion: result.rulesVersion,
         hasHtml: result.hasHtml,
         authentication: result.authentication ?? Prisma.DbNull,
+        feedUnavailable: result.feedUnavailable?.length ? result.feedUnavailable : Prisma.DbNull,
+        reputation: result.reputation ?? Prisma.DbNull,
         analyzedAt: new Date(),
         lockedUntil: null,
         lastErrorCode: null,
@@ -198,10 +209,57 @@ export async function processNext(deps: QueueDeps): Promise<Outcome> {
     return release(db, job, code, maxAttempts);
   }
 
+  let exactFeedMatch = false;
+  let exclusionsAvailable = true;
+  let excludedDomains: string[] = [];
+  if (result.findings.some((f) => f.ruleId === 'R9') || (deps.enabledFeeds?.length ?? 0) > 0 || Boolean(deps.virusTotalApiKey)) {
+    try {
+      const feed = await lookupFeeds(db, result.links, deps.institutionalDomains, deps.enabledFeeds ?? []);
+      const others = result.findings.filter((f) => f.ruleId !== 'R9');
+      const url = findUrlFinding(result.links, deps.institutionalDomains, feed.excludedDomains);
+      result.findings = [...others, ...(url ? [url] : []), ...(feed.finding ? [feed.finding] : [])];
+      result.feedUnavailable = feed.unavailable;
+      excludedDomains = feed.excludedDomains;
+      exactFeedMatch = feed.exact;
+      result.priority = priorityOf(result.findings);
+    } catch {
+      exclusionsAvailable = false;
+      // Un error del feed no impide terminar el reporte. Sin exclusiones disponibles no se
+      // emite R9, para evitar falsas alarmas con dominios excluidos manualmente.
+      result.findings = result.findings.filter((f) => f.ruleId !== 'R9');
+      result.feedUnavailable = [...(deps.enabledFeeds ?? [])];
+      result.priority = priorityOf(result.findings);
+      log.warn({ errorCode: 'feed_lookup_unavailable' }, 'reputación no disponible');
+    }
+  }
+
+  let exactReputationMatch = false;
+  if (deps.virusTotalApiKey) {
+    try {
+      result.reputation = exclusionsAvailable
+        ? await reviewReputation(db, result.links, deps.institutionalDomains, excludedDomains, deps.virusTotalApiKey, deps.reputationFetchFn)
+        : { status: 'unavailable', items: [] };
+      const reputation = reputationFinding(result.reputation, result.links);
+      if (reputation.finding) {
+        result.findings.push(reputation.finding);
+        result.rulesVersion = 'm9v-2026.11';
+      }
+      exactReputationMatch = reputation.exactReported;
+      result.priority = priorityOf(result.findings);
+    } catch {
+      // Si falla la base o la fuente, el reporte termina. Sin exclusiones confirmadas no se
+      // consulta ni se genera una señal nueva. Nunca se registra la clave, URL o excepción.
+      result.reputation = { status: 'unavailable', items: [] };
+      log.warn({ errorCode: 'reputation_unavailable' }, 'reputación no disponible');
+    }
+  } else {
+    result.reputation = { status: 'not_configured', items: [] };
+  }
+
   // ClamAV (M2). Nunca lanza: un fallo deja el adjunto en error y el reporte sigue (P-05).
   const scans = await scanAttachments(result.attachments, deps.scan, deps.scanFn);
   // Una firma de antivirus es la señal más fuerte que hay: el reporte sube a prioridad alta.
-  const priority = scans.some((s) => s.scanStatus === 'detected') ? 'high' : result.priority;
+  const priority = scans.some((s) => s.scanStatus === 'detected') || exactFeedMatch || exactReputationMatch ? 'high' : result.priority;
 
   const saved = await save(db, job, result, scans, priority);
   if (!saved) {

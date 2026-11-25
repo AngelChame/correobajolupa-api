@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defangHost } from '../analysis/links.js';
 import type { ScanStatus } from '../contract/schemas/attachments.js';
 import type { ReportDocument } from '../contract/schemas/report-document.js';
-import { EvidenceItem, type LimitedReason, type Priority, type ReportStatus, type RuleId } from '../contract/schemas/reports.js';
+import { EvidenceItem, ReputationReview, type LimitedReason, type Priority, type ReportStatus, type RuleId } from '../contract/schemas/reports.js';
 import { defangAddress } from '../viewer/text.js';
 import { GUIDE_VERSION, RULE_GUIDES, UNKNOWN_RULE_GUIDE, type GuideText } from './guide-texts.js';
 import { buildNotes, buildSummary, type Authentication } from './summary.js';
@@ -29,6 +29,8 @@ export type ReportInput = {
   /** Remitente tal como lo guardó el analizador (crudo); sale solo desactivado. */
   fromAddress: string | null;
   authentication: Authentication | null;
+  feedUnavailable?: unknown;
+  reputation?: unknown;
   findings: readonly { id: string; ruleId: string; evidence: unknown; createdAt: Date }[];
   /** Dominio (o IP) crudo de cada enlace; sale solo desactivado. */
   links: readonly { position: number; domain: string | null }[];
@@ -41,7 +43,7 @@ export type BuildOptions = {
 };
 
 /** Orden fijo de los hallazgos: lo más grave o accionable primero. Una regla sin guía va al final. */
-export const FINDING_ORDER: readonly RuleIdValue[] = ['R8', 'R6', 'R7', 'R2', 'R3', 'R4', 'R5', 'R1'];
+export const FINDING_ORDER: readonly RuleIdValue[] = ['R8', 'R10', 'R6', 'R7', 'R9', 'R2', 'R3', 'R4', 'R5', 'R1'];
 export const MAX_INDICATORS = 25;
 
 const Evidence = z.array(EvidenceItem);
@@ -80,6 +82,9 @@ function indicadores(entrada: ReportInput): ReportDocumentDto['indicators'] {
 export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones: BuildOptions = {}): ReportDocumentDto {
   // Un análisis que no terminó no tiene resultados (D-004): ni hallazgos, ni indicadores, ni adjuntos.
   const fallido = entrada.status === 'failed';
+  const reputation = fallido
+    ? { status: 'not_configured' as const, items: [] }
+    : ReputationReview.parse(entrada.reputation ?? { status: 'not_configured', items: [] });
 
   const findings = fallido
     ? []
@@ -125,6 +130,7 @@ export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones:
       scanStatuses: attachments.map((a) => a.scanStatus),
     }),
     findings,
+    reputation,
     indicators: fallido ? [] : indicadores(entrada),
     attachments,
     notes: buildNotes({
@@ -132,6 +138,10 @@ export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones:
       limitedReason: entrada.limitedReason,
       findingsCount: findings.length,
       authentication: entrada.authentication,
+      feedUnavailable: Array.isArray(entrada.feedUnavailable)
+        ? entrada.feedUnavailable.filter((s) => s === 'OpenPhish' || s === 'URLhaus')
+        : [],
+      reputationUnavailable: reputation.status === 'unavailable',
     }),
   };
 }

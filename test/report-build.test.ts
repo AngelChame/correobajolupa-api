@@ -39,6 +39,16 @@ function entrada(extra: Partial<ReportInput> = {}): ReportInput {
 }
 
 describe('buildReportDocument', () => {
+  it('un feed caído añade una nota sin cambiar completed ni afirmar que el enlace está limpio', () => {
+    const doc = buildReportDocument(entrada({
+      status: 'completed', findings: [], feedUnavailable: ['OpenPhish'], priority: 'low',
+    }), AHORA);
+    expect(ReportDocument.parse(doc)).toEqual(doc);
+    expect(doc.status).toBe('completed');
+    expect(doc.notes.map((note) => note.kind)).toContain('feed_unavailable');
+    expect(doc.notes.find((note) => note.kind === 'feed_unavailable')?.text).toBe(NOTE_TEXTS.feedUnavailable.text);
+  });
+
   it('cumple el contrato ReportDocument y lleva la versión de la guía', () => {
     const doc = buildReportDocument(entrada(), AHORA);
     expect(ReportDocument.parse(doc)).toEqual(doc);
@@ -53,14 +63,14 @@ describe('buildReportDocument', () => {
     expect(JSON.stringify(buildReportDocument(entrada(), AHORA))).toBe(JSON.stringify(a));
   });
 
-  it('hallazgos en orden fijo R8, R6, R7, R2, R3, R4, R5, R1; dentro de una regla por fecha e id', () => {
+  it('hallazgos en orden fijo, incluidas R9 y R10; dentro de una regla por fecha e id', () => {
     const marca = (n: string) => [{ label: 'marca', value: n }];
-    const findings = ['R1', 'R5', 'R4', 'R3', 'R2', 'R7', 'R6', 'R8'].map((ruleId, i) => ({ id: uuid(i), ruleId, createdAt: t(0), evidence: marca(`f${i}`) }));
+    const findings = ['R1', 'R5', 'R4', 'R3', 'R2', 'R7', 'R6', 'R8', 'R9', 'R10'].map((ruleId, i) => ({ id: uuid(i), ruleId, createdAt: t(0), evidence: marca(`f${i}`) }));
     findings.push({ id: uuid(20), ruleId: 'R6', createdAt: t(0), evidence: marca('f20') }, { id: uuid(30), ruleId: 'R6', createdAt: t(-5), evidence: marca('f30') });
     const doc = buildReportDocument(entrada({ findings }), AHORA);
-    expect(doc.findings.map((f) => f.ruleId)).toEqual(['R8', 'R6', 'R6', 'R6', 'R7', 'R2', 'R3', 'R4', 'R5', 'R1']);
+    expect(doc.findings.map((f) => f.ruleId)).toEqual(['R8', 'R10', 'R6', 'R6', 'R6', 'R7', 'R9', 'R2', 'R3', 'R4', 'R5', 'R1']);
     // Entre los R6: primero el más antiguo (f30); luego f6 y f20, a la misma hora, por id.
-    expect(doc.findings.slice(1, 4).map((f) => f.evidence[0]!.value)).toEqual(['f30', 'f6', 'f20']);
+    expect(doc.findings.slice(2, 5).map((f) => f.evidence[0]!.value)).toEqual(['f30', 'f6', 'f20']);
   });
 
   it('cada hallazgo trae su guía completa y la evidencia tal como está guardada', () => {
@@ -76,13 +86,13 @@ describe('buildReportDocument', () => {
   it('una regla sin guía usa el texto genérico, va al final y avisa solo con el ruleId', () => {
     const avisos: string[] = [];
     const findings = [
-      { id: uuid(1), ruleId: 'R9', createdAt: t(0), evidence: [] },
+      { id: uuid(1), ruleId: 'R11', createdAt: t(0), evidence: [] },
       { id: uuid(2), ruleId: 'R1', createdAt: t(0), evidence: [] },
     ];
     const doc = buildReportDocument(entrada({ findings }), AHORA, { onUnknownRule: (r) => avisos.push(r) });
-    expect(doc.findings.map((f) => f.ruleId)).toEqual(['R1', 'R9']);
+    expect(doc.findings.map((f) => f.ruleId)).toEqual(['R1', 'R11']);
     expect(doc.findings[1]).toMatchObject({ title: UNKNOWN_RULE_GUIDE.title, whatItMeans: UNKNOWN_RULE_GUIDE.whatItMeans });
-    expect(avisos).toEqual(['R9']);
+    expect(avisos).toEqual(['R11']);
   });
 
   it('indicadores: remitente, dominios y SHA-256 desactivados, sin repetidos y en orden', () => {

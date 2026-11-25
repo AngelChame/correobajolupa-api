@@ -1,6 +1,7 @@
 import { loadConfig } from './config.js';
 import { connectDb, disconnectDb } from './db/client.js';
 import { createLogger } from './logger.js';
+import { runFeedSchedule } from './feeds/refresh.js';
 import { runCleanupSchedule } from './queue/cleanup.js';
 import { runWorker } from './queue/loop.js';
 import { createDiskStorage } from './storage/disk.js';
@@ -42,6 +43,11 @@ await Promise.all([
       institutionalDomains: config.INSTITUTIONAL_DOMAINS,
       leaseSeconds: config.JOB_LEASE_SECONDS,
       maxAttempts: config.JOB_MAX_ATTEMPTS,
+      enabledFeeds: [
+        ...(config.OPENPHISH_FEED_ENABLED ? ['OpenPhish' as const] : []),
+        ...(config.URLHAUS_AUTH_KEY ? ['URLhaus' as const] : []),
+      ],
+      virusTotalApiKey: config.VIRUSTOTAL_API_KEY,
       scan: {
         host: config.CLAMAV_HOST,
         port: config.CLAMAV_PORT,
@@ -54,6 +60,12 @@ await Promise.all([
     { pollMs: config.WORKER_POLL_MS, signal: apagado.signal },
   ),
   runCleanupSchedule({ db, storage, logger }, { intervalMs: config.CLEANUP_INTERVAL_MIN * 60_000, signal: apagado.signal }),
+  runFeedSchedule(db, logger, {
+    openPhishEnabled: config.OPENPHISH_FEED_ENABLED,
+    urlhausAuthKey: config.URLHAUS_AUTH_KEY,
+    intervalMs: config.FEED_REFRESH_HOURS * 60 * 60 * 1000,
+    signal: apagado.signal,
+  }),
 ]);
 await disconnectDb();
 logger.info('worker detenido');
