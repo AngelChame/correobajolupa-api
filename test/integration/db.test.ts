@@ -43,6 +43,8 @@ describe('migración inicial', () => {
       'attachments',
       'audit_events',
       'exclusions',
+      'feed_entries',
+      'feed_sources',
       'findings',
       'incident_comments',
       'incident_indicators',
