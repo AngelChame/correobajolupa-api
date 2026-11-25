@@ -54,6 +54,17 @@ export const ReportLink = z
 
 export const AuthResult = z.enum(['pass', 'fail', 'none', 'unknown']);
 
+export const ReputationReview = z.object({
+  status: z.enum(['not_configured', 'checked', 'unavailable']),
+  items: z.array(z.object({
+    displayUrl: z.string().meta({ description: 'URL desactivada: nunca clicable.' }),
+    state: z.enum(['reported', 'suspicious', 'no_detections', 'no_data', 'error', 'not_checked']),
+    malicious: z.number().int().nonnegative().nullable(),
+    total: z.number().int().nonnegative().nullable(),
+    analyzedAt: z.iso.datetime().nullable(),
+  })).max(5),
+}).meta({ id: 'ReputationReview', description: 'Solo informa sobre reputación existente; sin datos o fallo no significa seguro.' });
+
 export const ReportDetail = ReportSummary.extend({
   limitedReason: LimitedReason.nullable(),
   rulesVersion: z.string().nullable(),
@@ -64,6 +75,7 @@ export const ReportDetail = ReportSummary.extend({
     .object({ spf: AuthResult, dkim: AuthResult, dmarc: AuthResult })
     .nullable()
     .meta({ description: 'Solo informativo; nunca suma puntaje (D-016). Puede estar alterado en un `.eml` subido.' }),
+  reputation: ReputationReview,
 }).meta({ id: 'ReportDetail' });
 
 export const PasteBody = z

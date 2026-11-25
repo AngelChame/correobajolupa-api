@@ -73,6 +73,6 @@ describe('textos de la guía', () => {
   });
 
   it('versión de la guía', () => {
-    expect(GUIDE_VERSION).toBe('g3-2026.11');
+    expect(GUIDE_VERSION).toBe('g4-2026.11');
   });
 });

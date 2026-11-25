@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { AttachmentList } from '../contract/schemas/attachments.js';
-import { Finding, ReportDetail, type ReportSummary } from '../contract/schemas/reports.js';
+import { Finding, ReportDetail, ReputationReview, type ReportSummary } from '../contract/schemas/reports.js';
 import type { Attachment as AttachmentRow, Finding as FindingRow, Report } from '../generated/prisma/client.js';
 import { defangHost } from '../analysis/links.js';
 import { defangLooseText } from '../viewer/text.js';
@@ -48,12 +48,13 @@ export const DETAIL_SELECT = {
   hasHtml: true,
   authentication: true,
   feedUnavailable: true,
+  reputation: true,
   links: { select: { displayText: true, defangedUrl: true, domain: true }, orderBy: { position: 'asc' } },
   _count: { select: { findings: true } },
 } as const;
 
 type DetailRow = SummaryRow &
-  Pick<Report, 'limitedReason' | 'rulesVersion' | 'analyzedAt' | 'hasHtml' | 'authentication'> & {
+  Pick<Report, 'limitedReason' | 'rulesVersion' | 'analyzedAt' | 'hasHtml' | 'authentication' | 'reputation'> & {
     links: { displayText: string | null; defangedUrl: string; domain: string | null }[];
     _count: { findings: number };
   };
@@ -76,6 +77,7 @@ export function toDetailDto(row: DetailRow): DetailDto {
     })),
     hasHtml: row.hasHtml,
     authentication: ReportDetail.shape.authentication.parse(row.authentication ?? null),
+    reputation: ReputationReview.parse(row.reputation ?? { status: 'not_configured', items: [] }),
   };
 }
 
@@ -119,12 +121,14 @@ export function toAttachmentListDto(rows: readonly AttachmentRow[]): z.infer<typ
  */
 export const REPORT_DOCUMENT_SELECT = {
   id: true,
-  status: true,
+    status: true,
   limitedReason: true,
   priority: true,
   rulesVersion: true,
   fromAddress: true,
   authentication: true,
+  feedUnavailable: true,
+  reputation: true,
   findings: { select: { id: true, ruleId: true, evidence: true, createdAt: true } },
   links: { select: { position: true, domain: true } },
   attachments: { select: { position: true, fileName: true, sha256: true, scanStatus: true } },

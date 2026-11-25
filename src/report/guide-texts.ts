@@ -7,7 +7,7 @@ import type { AuthResult, LimitedReason, RuleId } from '../contract/schemas/repo
  *
  * Ningún texto lleva enlaces ni direcciones de correo: el informe no debe tener nada clicable (D-017).
  */
-export const GUIDE_VERSION = 'g3-2026.11';
+export const GUIDE_VERSION = 'g4-2026.11';
 
 export type GuideText = {
   readonly title: string;
@@ -165,16 +165,16 @@ export const RULE_GUIDES: Readonly<Record<RuleIdValue, GuideText>> = {
   },
   R10: {
     title: 'Una dirección web figura en una lista de reputación',
-    whatItMeans: 'El enlace coincide con una dirección publicada en una lista de sitios reportados; la evidencia indica la fuente y la fecha.',
+    whatItMeans: 'Una fuente de reputación informó una coincidencia o motores marcaron el enlace; la evidencia indica la fuente y el alcance de la comparación.',
     whyRisky:
-      'La aparición en una lista justifica revisarlo con prioridad, pero un reporte de terceros puede equivocarse o quedar desactualizado. La coincidencia por dominio no equivale a una coincidencia exacta de la dirección.',
+      'Una lista o un informe de terceros puede equivocarse o quedar desactualizado. Un dominio compartido o una URL sin parámetros no equivalen a una coincidencia exacta.',
     whatToDo: [
       'No abras el enlace ni compartas datos a través de él.',
       'Si ya enviaste datos, avisa a tu área de seguridad por un canal conocido.',
       'Espera a que un analista confirme los siguientes pasos.',
     ],
     forAnalyst: [
-      'Comprueba en la evidencia la fuente, la fecha y si la coincidencia fue exacta o solo por dominio.',
+      'Comprueba la fuente, la fecha disponible, el conteo de motores y si la coincidencia fue exacta, sin parámetros o solo por dominio.',
       'Contrasta la señal con el contexto del correo antes de confirmar un indicador.',
       'Si la lista no está disponible, no interpretes esa falta de datos como una dirección segura.',
     ],
@@ -259,6 +259,10 @@ export const NOTE_TEXTS = {
   feedUnavailable: {
     title: 'Lista de reputación no disponible',
     text: 'Una lista de reputación configurada no respondió o aún no tiene datos válidos. No aparecer en los resultados no significa que el enlace sea seguro.',
+  },
+  reputationUnavailable: {
+    title: 'Consulta de reputación no disponible',
+    text: 'La consulta externa falló o se agotó su cuota. Las reglas locales siguen funcionando; no consultar un enlace no significa que sea seguro.',
   },
 } as const;
 

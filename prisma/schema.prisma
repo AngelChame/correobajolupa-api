@@ -193,6 +193,8 @@ model Report {
   authentication Json?
   /// Fuentes configuradas pero no disponibles al analizar; solo nombres controlados.
   feedUnavailable Json?          @map("feed_unavailable")
+  /// Estados de VirusTotal y URL desactivadas, sin contenido ni enlaces clicables.
+  reputation     Json?
   /// Clave que devuelve el almacenamiento (carpeta del reporte / nombre aleatorio). Nunca una ruta ni el nombre del adjunto.
   storageKey     String         @map("storage_key") @db.VarChar(128)
   sizeBytes      Int            @map("size_bytes")

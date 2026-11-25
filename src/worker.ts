@@ -47,6 +47,7 @@ await Promise.all([
         ...(config.OPENPHISH_FEED_ENABLED ? ['OpenPhish' as const] : []),
         ...(config.URLHAUS_AUTH_KEY ? ['URLhaus' as const] : []),
       ],
+      virusTotalApiKey: config.VIRUSTOTAL_API_KEY,
       scan: {
         host: config.CLAMAV_HOST,
         port: config.CLAMAV_PORT,

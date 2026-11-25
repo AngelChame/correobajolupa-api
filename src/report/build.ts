@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defangHost } from '../analysis/links.js';
 import type { ScanStatus } from '../contract/schemas/attachments.js';
 import type { ReportDocument } from '../contract/schemas/report-document.js';
-import { EvidenceItem, type LimitedReason, type Priority, type ReportStatus, type RuleId } from '../contract/schemas/reports.js';
+import { EvidenceItem, ReputationReview, type LimitedReason, type Priority, type ReportStatus, type RuleId } from '../contract/schemas/reports.js';
 import { defangAddress } from '../viewer/text.js';
 import { GUIDE_VERSION, RULE_GUIDES, UNKNOWN_RULE_GUIDE, type GuideText } from './guide-texts.js';
 import { buildNotes, buildSummary, type Authentication } from './summary.js';
@@ -30,6 +30,7 @@ export type ReportInput = {
   fromAddress: string | null;
   authentication: Authentication | null;
   feedUnavailable?: unknown;
+  reputation?: unknown;
   findings: readonly { id: string; ruleId: string; evidence: unknown; createdAt: Date }[];
   /** Dominio (o IP) crudo de cada enlace; sale solo desactivado. */
   links: readonly { position: number; domain: string | null }[];
@@ -81,6 +82,9 @@ function indicadores(entrada: ReportInput): ReportDocumentDto['indicators'] {
 export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones: BuildOptions = {}): ReportDocumentDto {
   // Un análisis que no terminó no tiene resultados (D-004): ni hallazgos, ni indicadores, ni adjuntos.
   const fallido = entrada.status === 'failed';
+  const reputation = fallido
+    ? { status: 'not_configured' as const, items: [] }
+    : ReputationReview.parse(entrada.reputation ?? { status: 'not_configured', items: [] });
 
   const findings = fallido
     ? []
@@ -126,6 +130,7 @@ export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones:
       scanStatuses: attachments.map((a) => a.scanStatus),
     }),
     findings,
+    reputation,
     indicators: fallido ? [] : indicadores(entrada),
     attachments,
     notes: buildNotes({
@@ -136,6 +141,7 @@ export function buildReportDocument(entrada: ReportInput, ahora: Date, opciones:
       feedUnavailable: Array.isArray(entrada.feedUnavailable)
         ? entrada.feedUnavailable.filter((s) => s === 'OpenPhish' || s === 'URLhaus')
         : [],
+      reputationUnavailable: reputation.status === 'unavailable',
     }),
   };
 }
