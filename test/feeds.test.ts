@@ -4,7 +4,7 @@ import type { Db } from '../src/db/client.js';
 import { normalizeLink } from '../src/analysis/links.js';
 import { lookupFeeds } from '../src/feeds/lookup.js';
 import { digest, parseFeed } from '../src/feeds/parse.js';
-import { refreshFeed } from '../src/feeds/refresh.js';
+import { MAX_BYTES, refreshFeed, runFeedSchedule } from '../src/feeds/refresh.js';
 
 const date = new Date('2026-11-24T12:00:00.000Z');
 const logger = { info: vi.fn(), warn: vi.fn() } as unknown as Logger;
@@ -122,4 +122,104 @@ describe('listas de reputación sin acceso a la red', () => {
     expect(stored).toHaveLength(1);
     expect(state.lastGoodAt).toBeInstanceOf(Date);
   }, 20_000);
+
+  function fakeRefreshDb(source: string) {
+    const stored: { source: string; urlHash: string; hostHash: string; hasQuery: boolean }[] = [];
+    const state = { source, lastGoodAt: null as Date | null, lastErrorAt: null as Date | null };
+    const tx = {
+      $queryRaw: vi.fn(async () => [{ ok: true }]),
+      feedSource: {
+        upsert: vi.fn(async ({ create, update }: { create: typeof state; update: Partial<typeof state> }) => {
+          Object.assign(state, state.lastGoodAt === null && state.lastErrorAt === null ? create : update);
+        }),
+      },
+      feedEntry: {
+        deleteMany: vi.fn(async () => { stored.length = 0; }),
+        createMany: vi.fn(async ({ data }: { data: typeof stored }) => { stored.push(...data); }),
+      },
+    };
+    return { db: { $transaction: async (cb: (client: typeof tx) => Promise<boolean>) => cb(tx) } as unknown as Db, stored, state };
+  }
+
+  it.each([
+    ['error HTTP', async () => new Response('', { status: 503 }), { reason: 'http_error', httpStatus: 503 }],
+    ['cuerpo demasiado grande', async () => new Response('x'.repeat(MAX_BYTES + 1)), { reason: 'too_large', bytes: MAX_BYTES + 1 }],
+    ['UTF-8 inválido', async () => new Response(new Uint8Array([0xff, 0xfe, 0xfd])), { reason: 'decode_error', bytes: 3 }],
+    ['formato inesperado', async () => new Response('<html>no es una lista</html>'), { reason: 'invalid_format' }],
+    ['lista vacía', async () => new Response('# solo comentarios\n'), { reason: 'empty_feed' }],
+  ])('diagnostica %s sin filtrar el marcador', async (_name, respond, expected) => {
+    const { db, stored } = fakeRefreshDb('URLhaus');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const log = { warn, info } as unknown as Logger;
+    const marcador = 'MARCADOR_SINTETICO_ABC123456';
+    const fetchFn = vi.fn(respond) as unknown as typeof fetch;
+
+    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, marcador)).toBe(false);
+    expect(stored).toHaveLength(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const fields = warn.mock.calls[0]![0] as Record<string, unknown>;
+    expect(fields).toMatchObject({ source: 'URLhaus', errorCode: 'feed_unavailable', ...expected });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain(marcador);
+    expect(logged).not.toContain('urlhaus-api.abuse.ch');
+    expect(logged).not.toContain('no es una lista');
+  }, 20_000);
+
+  it('clasifica fallos de red por el nombre del error, sin registrar su mensaje', async () => {
+    const { db } = fakeRefreshDb('URLhaus');
+    const warn = vi.fn();
+    const log = { warn, info: vi.fn() } as unknown as Logger;
+    const fetchFn = vi.fn(async () => {
+      const error = new Error('fetch a https://urlhaus-api.abuse.ch/v2/MARCADOR_SINTETICO falló');
+      error.name = 'TimeoutError';
+      throw error;
+    }) as unknown as typeof fetch;
+
+    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, 'MARCADOR_SINTETICO')).toBe(false);
+    expect(warn.mock.calls[0]![0]).toMatchObject({
+      source: 'URLhaus', errorCode: 'feed_unavailable', reason: 'network_error', errName: 'TimeoutError',
+    });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain('MARCADOR_SINTETICO');
+    expect(logged).not.toContain('urlhaus-api.abuse.ch');
+  });
+
+  it('una descarga correcta no emite advertencias y registra cuántas entradas se guardaron', async () => {
+    const { db, stored } = fakeRefreshDb('URLhaus');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const log = { warn, info } as unknown as Logger;
+    const feed = 'https://sitio.example/ruta\n';
+    expect(await refreshFeed(db, log, 'URLhaus', vi.fn(async () => new Response(feed)), 'CLAVE_DE_PRUEBA')).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(info.mock.calls[0]![0]).toMatchObject({ source: 'URLhaus', count: 1 });
+    expect(stored).toHaveLength(1);
+  });
+
+  it('el planificador registra un fallo de base sin exponer el mensaje ni el marcador', async () => {
+    const marcador = 'MARCADOR_SINTETICO';
+    const controller = new AbortController();
+    const warn = vi.fn();
+    const log = { warn, info: vi.fn() } as unknown as Logger;
+    const db = {
+      $transaction: async () => {
+        controller.abort();
+        throw new Error('error interno con valor sensible');
+      },
+    } as unknown as Db;
+
+    await runFeedSchedule(db, log, {
+      openPhishEnabled: false,
+      urlhausAuthKey: marcador,
+      intervalMs: 0,
+      signal: controller.signal,
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatchObject({ source: 'URLhaus', errorCode: 'feed_unavailable', reason: 'unknown' });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain(marcador);
+    expect(logged).not.toContain('valor sensible');
+  });
 });
