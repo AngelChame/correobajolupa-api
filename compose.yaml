@@ -129,6 +129,7 @@ services:
       OPENPHISH_FEED_ENABLED: ${OPENPHISH_FEED_ENABLED:-false}
       URLHAUS_AUTH_KEY: ${URLHAUS_AUTH_KEY:-}
       FEED_REFRESH_HOURS: ${FEED_REFRESH_HOURS:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
       # M2: ClamAV por la red clamav-net. Vacíos = valores por defecto de src/config.ts.
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"

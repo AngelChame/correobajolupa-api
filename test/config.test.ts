@@ -19,10 +19,14 @@ describe('loadConfig', () => {
       FEED_REFRESH_HOURS: 12,
     });
     expect(loadConfig({ DATABASE_URL: URL_VALIDA }).URLHAUS_AUTH_KEY).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL: URL_VALIDA }).VIRUSTOTAL_API_KEY).toBeUndefined();
     const value = 'MARCADOR_CLAVE_INCORRECTA?';
     const message = mensajeDeError({ DATABASE_URL: URL_VALIDA, URLHAUS_AUTH_KEY: value });
     expect(message).toContain('URLHAUS_AUTH_KEY');
     expect(message).not.toContain(value);
+    const vtMessage = mensajeDeError({ DATABASE_URL: URL_VALIDA, VIRUSTOTAL_API_KEY: value });
+    expect(vtMessage).toContain('VIRUSTOTAL_API_KEY');
+    expect(vtMessage).not.toContain(value);
   });
 
   it('acepta una DATABASE_URL de PostgreSQL y aplica los valores por defecto', () => {

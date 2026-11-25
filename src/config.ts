@@ -110,6 +110,8 @@ const Env = z
     OPENPHISH_FEED_ENABLED: z.stringbool().default(false),
     URLHAUS_AUTH_KEY: opcional(z.string().regex(/^[A-Za-z0-9._-]{8,256}$/)),
     FEED_REFRESH_HOURS: enteroEntre(12, 72, 12),
+    // Solo el worker. Vacía: sin consultas a VirusTotal; jamás se incluye en errores.
+    VIRUSTOTAL_API_KEY: opcional(z.string().regex(/^[A-Za-z0-9_-]{32,128}$/)),
 
     // --- M2: ClamAV (solo el worker lo usa). clamd por TCP dentro de la red de Docker. ---
     CLAMAV_HOST: z.preprocess((valor) => (valor === '' ? undefined : valor), z.string().regex(NOMBRE_DE_HOST).default('clamav')),
