@@ -147,21 +147,21 @@ describe('listas de reputación sin acceso a la red', () => {
     ['UTF-8 inválido', async () => new Response(new Uint8Array([0xff, 0xfe, 0xfd])), { reason: 'decode_error', bytes: 3 }],
     ['formato inesperado', async () => new Response('<html>no es una lista</html>'), { reason: 'invalid_format' }],
     ['lista vacía', async () => new Response('# solo comentarios\n'), { reason: 'empty_feed' }],
-  ])('diagnostica %s sin filtrar secretos', async (_name, respond, expected) => {
+  ])('diagnostica %s sin filtrar el marcador', async (_name, respond, expected) => {
     const { db, stored } = fakeRefreshDb('URLhaus');
     const warn = vi.fn();
     const info = vi.fn();
     const log = { warn, info } as unknown as Logger;
-    const key = 'CLAVE_SECRETA_ABCDEF123456';
+    const marcador = 'MARCADOR_SINTETICO_ABC123456';
     const fetchFn = vi.fn(respond) as unknown as typeof fetch;
 
-    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, key)).toBe(false);
+    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, marcador)).toBe(false);
     expect(stored).toHaveLength(0);
     expect(warn).toHaveBeenCalledTimes(1);
     const fields = warn.mock.calls[0]![0] as Record<string, unknown>;
     expect(fields).toMatchObject({ source: 'URLhaus', errorCode: 'feed_unavailable', ...expected });
     const logged = JSON.stringify(warn.mock.calls);
-    expect(logged).not.toContain(key);
+    expect(logged).not.toContain(marcador);
     expect(logged).not.toContain('urlhaus-api.abuse.ch');
     expect(logged).not.toContain('no es una lista');
   }, 20_000);
@@ -171,17 +171,17 @@ describe('listas de reputación sin acceso a la red', () => {
     const warn = vi.fn();
     const log = { warn, info: vi.fn() } as unknown as Logger;
     const fetchFn = vi.fn(async () => {
-      const error = new Error('fetch a https://urlhaus-api.abuse.ch/v2/CLAVE_SECRETA falló');
+      const error = new Error('fetch a https://urlhaus-api.abuse.ch/v2/MARCADOR_SINTETICO falló');
       error.name = 'TimeoutError';
       throw error;
     }) as unknown as typeof fetch;
 
-    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, 'CLAVE_SECRETA')).toBe(false);
+    expect(await refreshFeed(db, log, 'URLhaus', fetchFn, 'MARCADOR_SINTETICO')).toBe(false);
     expect(warn.mock.calls[0]![0]).toMatchObject({
       source: 'URLhaus', errorCode: 'feed_unavailable', reason: 'network_error', errName: 'TimeoutError',
     });
     const logged = JSON.stringify(warn.mock.calls);
-    expect(logged).not.toContain('CLAVE_SECRETA');
+    expect(logged).not.toContain('MARCADOR_SINTETICO');
     expect(logged).not.toContain('urlhaus-api.abuse.ch');
   });
 
@@ -197,20 +197,21 @@ describe('listas de reputación sin acceso a la red', () => {
     expect(stored).toHaveLength(1);
   });
 
-  it('el planificador registra un fallo de base sin exponer el mensaje ni la clave', async () => {
+  it('el planificador registra un fallo de base sin exponer el mensaje ni el marcador', async () => {
+    const marcador = 'MARCADOR_SINTETICO';
     const controller = new AbortController();
     const warn = vi.fn();
     const log = { warn, info: vi.fn() } as unknown as Logger;
     const db = {
       $transaction: async () => {
         controller.abort();
-        throw new Error('error interno con ruta/privada/secreta');
+        throw new Error('error interno con valor sensible');
       },
     } as unknown as Db;
 
     await runFeedSchedule(db, log, {
       openPhishEnabled: false,
-      urlhausAuthKey: 'CLAVE_SECRETA',
+      urlhausAuthKey: marcador,
       intervalMs: 0,
       signal: controller.signal,
     });
@@ -218,7 +219,7 @@ describe('listas de reputación sin acceso a la red', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toMatchObject({ source: 'URLhaus', errorCode: 'feed_unavailable', reason: 'unknown' });
     const logged = JSON.stringify(warn.mock.calls);
-    expect(logged).not.toContain('CLAVE_SECRETA');
-    expect(logged).not.toContain('ruta/privada/secreta');
+    expect(logged).not.toContain(marcador);
+    expect(logged).not.toContain('valor sensible');
   });
 });
